@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Forensics AI</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --success: #10B981;
+            --success-bg: #ECFDF5;
+            --danger: #EF4444;
+            --danger-bg: #FEF2F2;
+            --warning: #F59E0B;
+            --warning-bg: #FFFBEB;
+            --bg: #F3F4F6;
+            --card: #FFFFFF;
+            --text: #1F2937;
+            --border: #E5E7EB;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); min-height: 100vh; margin: 0; padding: 40px 20px; display: flex; justify-content: center; }
+        .container { background: var(--card); padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 1000px; }
+        h1 { margin-top: 0; color: var(--primary); text-align: center; }
+        p.subtitle { text-align: center; color: #6B7280; margin-bottom: 30px; }
+        
+        .upload-area { border: 2px dashed #D1D5DB; border-radius: 12px; padding: 30px; text-align: center; cursor: pointer; transition: 0.3s; margin-bottom: 20px; }
+        .upload-area:hover { border-color: var(--primary); background: #EEF2FF; }
+        input[type="file"] { display: none; }
+        .upload-label { display: inline-block; background: var(--primary); color: white; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .upload-label:hover { background: var(--primary-hover); }
+        
+        .btn-analyze { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-analyze:disabled { background: #9CA3AF; cursor: not-allowed; }
+        
+        /* Master Table */
+        .results-section { margin-top: 30px; display: none; }
+        .summary-bar { background: #EEF2FF; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; color: var(--primary); }
+        
+        .master-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+        .master-table th, .master-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top;}
+        .master-table th { background: #F9FAFB; font-weight: 600; color: #374151; }
+        
+        /* Row Coloring based on Verdict */
+        .row-danger { background-color: var(--danger-bg) !important; }
+        .row-warning { background-color: var(--warning-bg) !important; }
+        .row-success { background-color: var(--success-bg) !important; }
+        
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; text-align: center; }
+        .badge-danger { background: var(--danger); color: white; }
+        .badge-warning { background: var(--warning); color: white; }
+        .badge-success { background: var(--success); color: white; }
+
+        .thumb { max-width: 60px; max-height: 60px; border-radius: 4px; object-fit: cover; border: 1px solid #ccc; }
+        .file-name { font-size: 12px; color: #6B7280; word-break: break-all; margin-top: 5px; text-align: center; width: 80px;}
+        
+        .details-list { margin: 0; padding-left: 15px; font-size: 12px; color: #4B5563; }
+
+        .loader { display: none; text-align: center; color: var(--primary); font-weight: bold; margin-top: 20px; }
+        .loader::after { content: "..." ; animation: dots 1.5s infinite; }
+        @keyframes dots { 0%, 20% { content: ""; } 40% { content: "."; } 60% { content: ".."; } 80%, 100% { content: "..."; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🛡️ Image Forensics</h1>
+    <p class="subtitle">Upload multiple images to detect AI generation or manual editing.</p>
+
+    <div class="upload-area" onclick="document.getElementById('imageInput').click()">
+        <label class="upload-label">Choose Images (Multiple)</label>
+        <input type="file" id="imageInput" accept="image/*" multiple onchange="previewImages(event)">
+        <div id="fileName" style="margin-top: 10px; font-size: 14px; color: #6B7280;">No files selected</div>
+    </div>
+
+    <button id="analyzeBtn" class="btn-analyze" onclick="analyzeImages()">Analyze Images</button>
+    
+    <div id="loader" class="loader">Analyzing images. Please wait (This may take a moment per image)</div>
+
+    <!-- Results Section -->
+    <div id="resultsSection" class="results-section">
+        <div id="summaryBar" class="summary-bar"></div>
+        
+        <table class="master-table">
+            <thead>
+                <tr>
+                    <th width="100">Preview</th>
+                    <th width="150">Verdict</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Rows injected here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let selectedFiles = [];
+    let base64Images = [];
+
+    function previewImages(event) {
+        selectedFiles = Array.from(event.target.files);
+        base64Images = [];
+        document.getElementById('fileName').innerText = `${selectedFiles.length} file(s) selected`;
+        document.getElementById('resultsSection').style.display = 'none';
+
+        if (selectedFiles.length === 0) return;
+
+        selectedFiles.forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                base64Images[index] = e.target.result; // Store in order
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function analyzeImages() {
+        if (base64Images.length === 0) {
+            alert("Please select at least one image!");
+            return;
+        }
+
+        const btn = document.getElementById('analyzeBtn');
+        const loader = document.getElementById('loader');
+        const resultsSection = document.getElementById('resultsSection');
+
+        btn.disabled = true;
+        loader.style.display = 'block';
+        resultsSection.style.display = 'none';
+
+        try {
+            // Send ALL base64 images in one array
+            const response = await fetch('/validate-images', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imgpaths: base64Images })
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) throw new Error(data.detail || "Server error");
+
+            renderBatchResults(data);
+
+        } catch (error) {
+            alert("Error: " + error.message);
+        } finally {
+            btn.disabled = false;
+            loader.style.display = 'none';
+        }
+    }
+
+    function renderBatchResults(data) {
+        const resultsSection = document.getElementById('resultsSection');
+        const summaryBar = document.getElementById('summaryBar');
+        const tableBody = document.getElementById('tableBody');
+
+        resultsSection.style.display = 'block';
+        summaryBar.innerText = `Analysis Complete: Processed ${data.processed} out of ${data.total_images} images.`;
+        tableBody.innerHTML = '';
+
+        data.results.forEach((result, index) => {
+            // Get the original filename from our local array using the same index
+            const originalFileName = selectedFiles[index] ? selectedFiles[index].name : 'Unknown File';
+
+            const tr = document.createElement('tr');
+            
+            // 1. Determine Verdict and Row Color
+            let rowClass = 'row-success';
+            let badgeClass = 'badge-success';
+            let verdictText = 'ORIGINAL';
+
+            if (result.is_ai_generated && result.is_edited) {
+                rowClass = 'row-danger';
+                badgeClass = 'badge-danger';
+                verdictText = 'FORGED & AI';
+            } else if (result.is_ai_generated) {
+                rowClass = 'row-danger';
+                badgeClass = 'badge-danger';
+                verdictText = 'AI GENERATED';
+            } else if (result.is_edited) {
+                rowClass = 'row-warning';
+                badgeClass = 'badge-warning';
+                verdictText = 'EDITED';
+            }
+
+            if (!result.success) {
+                rowClass = 'row-warning';
+                badgeClass = 'badge-warning';
+                verdictText = 'ERROR';
+            }
+
+            tr.className = rowClass;
+
+            // 2. Build the Details Column
+            let detailsHtml = `<div><strong>Format:</strong> ${result.format || 'N/A'} | <strong>Dimensions:</strong> ${result.dimensions || 'N/A'}</div>`;
+            
+            if (result.success) {
+                if (result.ai_detection && result.ai_detection.success) {
+                    const score = (result.ai_detection.ai_score * 100).toFixed(2);
+                    detailsHtml += `<div><strong>AI Score:</strong> <span style="color:${result.ai_detection.ai_score >= 0.4 ? 'red' : 'green'}">${score}%</span></div>`;
+                }
+                
+                if (result.forensics && result.forensics.flags.length > 0) {
+                    detailsHtml += `<div style="margin-top:5px;"><strong>Flags:</strong><ul class="details-list">`;
+                    result.forensics.flags.forEach(flag => { detailsHtml += `<li>${flag}</li>`; });
+                    detailsHtml += `</ul></div>`;
+                }
+            } else {
+                detailsHtml += `<div style="color:red; font-weight:bold;">${result.error}</div>`;
+            }
+
+            // 3. Build the Row HTML (Includes Filename under the thumbnail)
+            tr.innerHTML = `
+                <td align="center">
+                    <img src="${base64Images[index]}" class="thumb" alt="Thumb">
+                    <div class="file-name">${originalFileName}</div>
+                </td>
+                <td>
+                    <span class="badge ${badgeClass}">${verdictText}</span>
+                </td>
+                <td>${detailsHtml}</td>
+            `;
+
+            tableBody.appendChild(tr);
+        });
+    }
+</script>
+
+</body>
+</html>
