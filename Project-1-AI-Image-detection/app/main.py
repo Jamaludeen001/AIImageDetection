@@ -6,6 +6,7 @@ import requests
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from PIL import Image
 import logging
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Production Image Forensics API",
-    version="8.1.0 (Health Check Added)",
+    version="8.2.0 (With UI)",
     description="Submit local paths, HTTP URLs, or Base64 strings. Returns is_edited and is_ai_generated.",
 )
 
@@ -68,6 +69,9 @@ class BulkImageResponse(BaseModel):
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"}
 BASE_DIR = Path.cwd()
 
+# Get the path to the templates folder
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
 def is_safe_path(path: Path) -> bool:
     try:
         path.resolve().relative_to(BASE_DIR.resolve())
@@ -77,15 +81,15 @@ def is_safe_path(path: Path) -> bool:
 
 
 # ==========================================
-# ROOT & HEALTH ROUTES
+# 🌐 ROOT & HEALTH ROUTES
 # ==========================================
-@app.get("/")
-def root():
-    return {"status": "ok", "message": "Production Image Forensics API is running"}
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    # Serve the HTML UI
+    return FileResponse(TEMPLATES_DIR / "index.html")
 
 @app.get("/health")
 def health():
-    # You can add database checks or queue checks here in the future
     return {
         "status": "healthy", 
         "api_keys_loaded": len(ai_detector.keys) > 0
@@ -207,7 +211,6 @@ async def process_single_image(input_str: str) -> ImageResponse:
 
     display_path = input_str if not input_str.startswith("data:image") else "[Base64 String]"
     
-    # Safely extract the AI status for the top-level response
     ai_status = False
     if ai_report and ai_report.success:
         ai_status = ai_report.is_ai_generated
