@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Forgery & Location Detector</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <!-- Leaflet CSS for the Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🛡️ HRMS Image Verifier</h1>
+    <p>Upload a selfie to verify its authenticity and GPS location.</p>
+  </header>
+
+  <main>
+    <!-- Single Upload Zone -->
+    <section class="upload-panel single">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="image/*" hidden />
+        <p>Click or drop an image here</p>
+        <img id="preview" class="preview" hidden alt="Preview" />
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="analyze-btn" disabled>Analyze & Extract</button>
+      <span id="status-msg"></span>
+    </div>
+
+    <!-- Results Section -->
+    <section id="results" class="results" hidden>
+      <div class="result-card">
+        
+        <!-- Verdict Header -->
+        <div class="result-header">
+          <span id="verdict-badge" class="verdict unverified">PENDING</span>
+          <h3 id="filename-display"></h3>
+        </div>
+        
+        <div class="meta-row">Cloud Confidence: <strong id="conf-display">-</strong></div>
+        <div class="meta-row" id="status-display"></div>
+
+        <!-- GPS Warning Alert -->
+        <div id="gps-warning" class="alert warning" style="display: none;">
+          ⚠️ <strong>Location Mismatch!</strong> The image was taken more than 100 meters from the expected location.
+        </div>
+        
+        <!-- GPS Success Alert -->
+        <div id="gps-success" class="alert success" style="display: none;">
+          ✅ <strong>Location Verified.</strong> Image taken within 100 meters of the hospital.
+        </div>
+
+        <div class="content-grid">
+          <!-- Left Side: OCR & Coordinates -->
+          <div class="ocr-section">
+            <h4>Extracted Data</h4>
+            <div id="gps-data" style="margin-bottom: 10px; font-family: monospace;"></div>
+            <div id="ocr-text" class="ocr-box"></div>
+            <button id="extract-btn" class="extract-btn">Extract Text & GPS</button>
+          </div>
+
+          <!-- Right Side: Interactive Map -->
+          <div class="map-section">
+            <h4>Location Map</h4>
+            <div id="map"></div>
+            <div class="map-legend">
+              <span style="color: #ef4444;">● Actual Location</span>
+              <span style="color: #3b82f6;">○ Expected Area (100m)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Forensic Maps (ELA & Edge) -->
+        <div class="artifacts">
+          <figure id="ela-fig" style="display:none;"><img id="ela-img" alt="ELA map" /><figcaption>ELA map</figcaption></figure>
+          <figure id="edge-fig" style="display:none;"><img id="edge-img" alt="Edge map" /><figcaption>Edge map</figcaption></figure>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
