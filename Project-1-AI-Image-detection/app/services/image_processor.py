@@ -146,7 +146,11 @@ async def process_single_image(input_str: str) -> ImageResponse:
 
     # --- 5. LAYER 3: AI DETECTION (Only runs if Forensics passes) ---
     ai_report = None
-    if not forensics_raw["is_edited"]:
+    
+    # 🛑 Check if the image was edited based on forensics
+    if forensics_raw["is_edited"]:
+        logger.info("Image flagged as EDITED by forensics. Skipping AI detection to save costs.")
+    else:
         ai_raw = await trigger_ai_detector_production(str(img_path))
         if "error" in ai_raw:
             ai_report = AIDetectionReport(success=False, error=ai_raw["error"])
