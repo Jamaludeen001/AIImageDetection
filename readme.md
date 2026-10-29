@@ -30,19 +30,20 @@ graph TD
     E --> F{"Watermark & Timestamp Valid?"}
     
     F -- No --> G["Gatekeeper Triggered: INVALID IMAGE"]
-    G --> H["Skip AI & Forensics (Save Costs)"]
+    G --> H["Skip Forensics & AI (Save Costs)"]
     H --> Z["Return Response to Client"]
     
     F -- Yes --> I["Layer 2: Metadata Forensics"]
     I --> J{"Is Edited / Forged?"}
     
-    J -- Yes --> K["Flag: Edited Image"]
-    K --> Z
+    J -- Yes --> K["Flag: EDITED IMAGE"]
+    K --> H
+    
     J -- No --> L["Layer 3: AI Detection (Sightengine)"]
     
     L --> M{"AI Score >= 0.40?"}
-    M -- Yes --> N["Flag: AI Generated"]
-    M -- No --> O["Flag: Original / Authentic"]
+    M -- Yes --> N["Flag: AI GENERATED"]
+    M -- No --> O["Flag: ORIGINAL / AUTHENTIC"]
     
     N --> Z
     O --> Z
