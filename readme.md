@@ -21,31 +21,58 @@ The system uses a **Gatekeeper Architecture** to save cost and processing time. 
 
 ```mermaid
 graph TD
-    A["Client sends Image: Base64, URL, or Path"] --> B["API: /validate-images"]
+    Client(["📱 Client App / Web UI"]) --> API["🚀 POST /validate-images"]
+    API --> InputType{"Input Type?"}
     
-    B --> C{"Is Image Valid?"}
-    C -- No --> D["Return Error: File not found"]
-    C -- Yes --> E["Layer 1: OCR Extraction (Gemini)"]
+    InputType -- "Base64 String" --> Decode["🔄 Decode Base64 to Temp File"]
+    InputType -- "HTTP URL" --> Download["🌐 Download URL to Temp File"]
+    InputType -- "Local Path" --> PathCheck{"Security Check: Is Safe Path?"}
     
-    E --> F{"Watermark & Timestamp Valid?"}
+    PathCheck -- "No" --> Err1["❌ HTTP 400: Path outside allowed directory"]
+    PathCheck -- "Yes" --> CheckImg["🖼️ Pillow: Open & Read Dimensions"]
     
-    F -- No --> G["Gatekeeper Triggered: INVALID IMAGE"]
-    G --> H["Skip AI & Forensics (Save Costs)"]
-    H --> Z["Return Response to Client"]
+    Decode --> CheckImg
+    Download --> CheckImg
+    CheckImg -- "Invalid/Failed" --> Err2["❌ HTTP 400: Not a valid image"]
     
-    F -- Yes --> I["Layer 2: Metadata Forensics"]
-    I --> J{"Is Edited / Forged?"}
+    CheckImg -- "Valid" --> L1_OCR["🛡️ LAYER 1: Gemini Vision OCR"]
     
-    J -- Yes --> K["Flag: Edited Image"]
-    K --> Z
-    J -- No --> L["Layer 3: AI Detection (Sightengine)"]
+    L1_OCR --> L1_Extract["Extract: Lat, Long, Timestamp, Watermark"]
     
-    L --> M{"AI Score >= 0.40?"}
-    M -- Yes --> N["Flag: AI Generated"]
-    M -- No --> O["Flag: Original / Authentic"]
+    L1_Extract --> Logic_Time{"Logic: is_valid_timestamp?"}
+    Logic_Time -- "False (e.g., 20:00 AM)" --> Reject["🚨 GATEKEEPER REJECT: INVALID IMAGE"]
     
-    N --> Z
-    O --> Z
+    Logic_Time -- "True" --> Logic_Mark{"Logic: Does Diagonal Watermark Exist?"}
+    
+    Logic_Mark -- "Yes (watermark != null)" --> Mark_Valid{"Logic: is_valid_watermark?"}
+    Mark_Valid -- "False (Scrambled/Mismatched)" --> Reject
+    Mark_Valid -- "True (Clean & Matches GPS)" --> L2_Forensics
+    
+    Logic_Mark -- "No (watermark == null)" --> L2_Forensics["🛡️ LAYER 2: Metadata Forensics"]
+    
+    L2_Forensics --> L2_Extract["Read EXIF / XMP / PNG Chunks"]
+    L2_Extract --> Logic_Edit{"Logic: is_edited?"}
+    
+    Logic_Edit -- "True (Photoshop/Canva tags found)" --> RejectEdit["⚠️ FLAG: EDITED IMAGE"]
+    RejectEdit --> SkipAI["⏭️ SKIP AI DETECTION (Save API Costs)"]
+    
+    Logic_Edit -- "False (Clean Metadata)" --> L3_AI["🛡️ LAYER 3: Sightengine AI Detection"]
+    
+    L3_AI --> L3_Queue["⏳ Acquire Queue Lock"]
+    L3_Queue --> L3_API["Call Sightengine genai Model"]
+    L3_API --> L3_Score{"Logic: ai_score >= 0.40?"}
+    
+    L3_Score -- "True (0.40 - 1.0)" --> FlagAI["🤖 FLAG: AI GENERATED"]
+    L3_Score -- "False (0.0 - 0.39)" --> FlagOriginal["✅ FLAG: ORIGINAL / AUTHENTIC"]
+    
+    Reject --> ReturnPayload
+    SkipAI --> ReturnPayload
+    FlagAI --> ReturnPayload
+    FlagOriginal --> ReturnPayload
+    
+    ReturnPayload(["📄 Return JSON Response to Client"])
+    ReturnPayload --> Cleanup["🧹 Delete Temp Files & Release Queue"]
+    Cleanup --> End(["🔚 Request Complete"])
 ```
 
 ---
