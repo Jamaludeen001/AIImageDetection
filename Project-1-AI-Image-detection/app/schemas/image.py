@@ -27,6 +27,9 @@ class OCRReport(BaseModel):
     timestamp: Optional[str] = None
     location: Optional[str] = None
     accuracy: Optional[str] = None
+    watermark: Optional[str] = None
+    is_valid_timestamp: Optional[bool] = None # <-- NEW
+    is_valid_watermark: Optional[bool] = None # <-- NEW
     error: Optional[str] = None
 
 class ImageResponse(BaseModel):
