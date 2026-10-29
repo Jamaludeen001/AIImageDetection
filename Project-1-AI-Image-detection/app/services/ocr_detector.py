@@ -37,16 +37,35 @@ class AttendanceOCR:
             image_bytes = self._prepare_image(image_path)
 
             prompt = """
-            Extract the following information from this attendance selfie image. 
-            Return ONLY a valid JSON object with these exact keys:
-            {
-                "latitude": "The raw latitude number ONLY (e.g., 13.007155). No symbols or letters.",
-                "longitude": "The raw longitude number ONLY (e.g., 80.206531). No symbols or letters.",
-                "timestamp": "The date and time shown STRICTLY FOLLOW the format dd/mm/yyyy hh:mm:ss AM/PM)",
-                "location": "The full address text shown",
-                "accuracy": "The GPS accuracy (e.g., 23.2 m)"
-            }
-            If a field is not visible, return null for that key.
+            You are a strict forensic auditor validating an attendance selfie watermark. 
+            Analyze the image and return ONLY a valid JSON object with these exact keys.
+
+            Rules for extraction:
+            1. "latitude": The raw latitude number ONLY (e.g., 13.007155).
+            2. "longitude": The raw longitude number ONLY (e.g., 80.206531).
+            3. "location": The full address text shown.
+            4. "accuracy": The GPS accuracy (e.g., 23.2 m).
+            5. "timestamp": Read the date and time printed in the GPS box. If logically invalid (e.g., "20:00:00 AM"), return "invalid".
+            6. "watermark": Extract the repeating diagonal text stamped across the image. If there is NO watermark anywhere in the image, return null.
+
+            STRICT VALIDATION RULES:
+            7. "is_valid_timestamp": 
+               - TRUE only if the time in the GPS box is logically valid.
+               - FALSE if logically impossible (e.g., hour > 12 with AM/PM).
+
+            8. "is_valid_watermark": 
+               - This key MUST be a boolean (true or false). Do NOT return "invalid" or "missing".
+               - TRUE ONLY IF ALL of the following are met:
+                 a) The watermark is present and readable.
+                 b) The text strictly follows the pattern: "HRMS DRAIVF • [Date] • [Coordinates]".
+                 c) The Date/Time inside the watermark EXACTLY MATCHES the Date/Time in the GPS box (step 5).
+               - FALSE if ANY of the following occur:
+                 a) The watermark is completely MISSING from the image.
+                 b) The text is overlapping/blurred so badly it breaks the pattern.
+                 c) The text does not follow the "HRMS DRAIVF" pattern.
+                 d) The timestamp in the watermark does NOT match the timestamp in the GPS box.
+
+            Return ONLY valid JSON.
             """
 
             models_to_try = [
@@ -72,6 +91,7 @@ class AttendanceOCR:
 
                         data = json.loads(response.text)
                         
+                        # Clean up coordinates
                         if data.get("latitude"): data["latitude"] = str(data["latitude"]).replace("°", "").strip()
                         if data.get("longitude"): data["longitude"] = str(data["longitude"]).replace("°", "").strip()
 
@@ -88,7 +108,7 @@ class AttendanceOCR:
                 
                 logger.warning(f"Model {model} failed completely. Switching to next fallback...")
 
-            return {"error": "All AI models are currently experiencing high demand. Please try again later."}
+            return {"error": "All AI models are currently experiencing high demand."}
 
         except Exception as e:
             logger.error(f"Gemini OCR failed for {image_path}: {e}")
