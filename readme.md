@@ -1,10 +1,9 @@
-
 # 🛡️ Production Image Forensics & Attendance OCR API
 
 A high-performance FastAPI backend designed for an attendance tracking system. It acts as a multi-layered security gatekeeper, validating the authenticity of user selfies by checking watermarks, extracting GPS data via Vision LLMs, scanning for editing software metadata, and detecting AI-generated images.
 
 ## 📑 Table of Contents
-- [System Architecture & Flow](#-system-architecture--flow)
+- [System Architecture & Flow](#️-system-architecture--flow)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
 - [Environment Variables](#-environment-variables)
@@ -21,28 +20,28 @@ The system uses a **Gatekeeper Architecture** to save cost and processing time. 
 
 ```mermaid
 graph TD
-    A[Client sends Image: Base64, URL, or Local Path] --> B[API: /validate-images]
+    A["Client sends Image: Base64, URL, or Path"] --> B["API: /validate-images"]
     
-    B --> C{Is Image Valid?}
-    C -- No --> D[Return Error: File not found / Invalid format]
-    C -- Yes --> E[Layer 1: OCR Extraction (Gemini 2.5 Flash-Lite)]
+    B --> C{"Is Image Valid?"}
+    C -- No --> D["Return Error: File not found"]
+    C -- Yes --> E["Layer 1: OCR Extraction (Gemini)"]
     
-    E --> F{Watermark Valid? & Timestamp Valid?}
+    E --> F{"Watermark & Timestamp Valid?"}
     
-    F -- No --> G[Gatekeeper Triggered: Mark as INVALID IMAGE]
-    G --> H[Skip AI & Forensics to save costs]
-    H --> Z[Return Response to Client]
+    F -- No --> G["Gatekeeper Triggered: INVALID IMAGE"]
+    G --> H["Skip AI & Forensics (Save Costs)"]
+    H --> Z["Return Response to Client"]
     
-    F -- Yes --> I[Layer 2: Metadata Forensics]
-    I --> J{Is Edited / Forged?}
+    F -- Yes --> I["Layer 2: Metadata Forensics"]
+    I --> J{"Is Edited / Forged?"}
     
-    J -- Yes --> K[Flag: Edited Image]
+    J -- Yes --> K["Flag: Edited Image"]
     K --> Z
-    J -- No --> L[Layer 3: AI Generation Detection (Sightengine)]
+    J -- No --> L["Layer 3: AI Detection (Sightengine)"]
     
-    L --> M{AI Score >= 0.40?}
-    M -- Yes --> N[Flag: AI Generated]
-    M -- No --> O[Flag: Original / Authentic]
+    L --> M{"AI Score >= 0.40?"}
+    M -- Yes --> N["Flag: AI Generated"]
+    M -- No --> O["Flag: Original / Authentic"]
     
     N --> Z
     O --> Z
