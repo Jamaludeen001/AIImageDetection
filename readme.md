@@ -35,28 +35,30 @@ graph TD
     Download --> CheckImg
     CheckImg -- "Invalid/Failed" --> Err2["❌ HTTP 400: Not a valid image"]
     
-    CheckImg -- "Valid" --> L1_OCR["🛡️ LAYER 1: Gemini Vision OCR"]
+    CheckImg -- "Valid" --> L1_Forensics["🛡️ LAYER 1: Metadata Forensics"]
     
-    L1_OCR --> L1_Extract["Extract: Lat, Long, Timestamp, Watermark"]
+    L1_Forensics --> L1_Extract["Read EXIF / XMP / PNG Chunks"]
+    L1_Extract --> Logic_Allowlist{"Logic: Is Software in ALLOWLIST? (HRMS, Samsung, etc.)"}
     
-    L1_Extract --> Logic_Time{"Logic: is_valid_timestamp?"}
-    Logic_Time -- "False (e.g., 20:00 AM)" --> Reject["🚨 GATEKEEPER REJECT: INVALID IMAGE"]
+    Logic_Allowlist -- "Yes (Safe App)" --> L2_OCR
+    Logic_Allowlist -- "No" --> Logic_Edit{"Logic: Is Software in BLACKLIST? (Photoshop, Midjourney)"}
     
+    Logic_Edit -- "Yes (Edited/AI Tool)" --> RejectEdit["🚨 FLAG: EDITED IMAGE"]
+    RejectEdit --> SkipAll["⏭️ SKIP OCR & AI (Save API Costs)"]
+    
+    Logic_Edit -- "No (Clean/Unknown Metadata)" --> L2_OCR["🛡️ LAYER 2: Gemini Vision OCR"]
+    
+    L2_OCR --> L2_Extract["Extract: Lat, Long, Timestamp, Watermark"]
+    L2_Extract --> Logic_Time{"Logic: is_valid_timestamp?"}
+    
+    Logic_Time -- "False (e.g., 20:00 AM)" --> RejectOCR["🚨 GATEKEEPER REJECT: INVALID IMAGE"]
     Logic_Time -- "True" --> Logic_Mark{"Logic: Does Diagonal Watermark Exist?"}
     
     Logic_Mark -- "Yes (watermark != null)" --> Mark_Valid{"Logic: is_valid_watermark?"}
-    Mark_Valid -- "False (Scrambled/Mismatched)" --> Reject
-    Mark_Valid -- "True (Clean & Matches GPS)" --> L2_Forensics
+    Mark_Valid -- "False (Scrambled/Mismatched)" --> RejectOCR
+    Mark_Valid -- "True (Clean & Matches GPS)" --> L3_AI
     
-    Logic_Mark -- "No (watermark == null)" --> L2_Forensics["🛡️ LAYER 2: Metadata Forensics"]
-    
-    L2_Forensics --> L2_Extract["Read EXIF / XMP / PNG Chunks"]
-    L2_Extract --> Logic_Edit{"Logic: is_edited?"}
-    
-    Logic_Edit -- "True (Photoshop/Canva tags found)" --> RejectEdit["⚠️ FLAG: EDITED IMAGE"]
-    RejectEdit --> SkipAI["⏭️ SKIP AI DETECTION (Save API Costs)"]
-    
-    Logic_Edit -- "False (Clean Metadata)" --> L3_AI["🛡️ LAYER 3: Sightengine AI Detection"]
+    Logic_Mark -- "No (watermark == null)" --> L3_AI["🛡️ LAYER 3: Sightengine AI Detection"]
     
     L3_AI --> L3_Queue["⏳ Acquire Queue Lock"]
     L3_Queue --> L3_API["Call Sightengine genai Model"]
@@ -65,7 +67,9 @@ graph TD
     L3_Score -- "True (0.40 - 1.0)" --> FlagAI["🤖 FLAG: AI GENERATED"]
     L3_Score -- "False (0.0 - 0.39)" --> FlagOriginal["✅ FLAG: ORIGINAL / AUTHENTIC"]
     
-    Reject --> ReturnPayload
+    RejectOCR --> SkipAI["⏭️ SKIP AI DETECTION"]
+    
+    SkipAll --> ReturnPayload
     SkipAI --> ReturnPayload
     FlagAI --> ReturnPayload
     FlagOriginal --> ReturnPayload
