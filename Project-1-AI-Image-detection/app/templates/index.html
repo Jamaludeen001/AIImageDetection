@@ -104,10 +104,10 @@
                 <thead>
                     <tr>
                         <th width="100">Preview</th>
-                        <th width="120">Verdict</th>
+                        <th width="130">Verdict</th>
                         <th width="220">Extracted Data</th>
-                        <th width="110">Valid Timestamp</th>
-                        <th width="110">Valid Water Mark</th>
+                        <th width="100">Valid<br>Timestamp</th>
+                        <th width="100">Valid Water<br>Mark</th>
                         <th>Image Details</th>
                     </tr>
                 </thead>
@@ -178,14 +178,14 @@
         const tableBody = document.getElementById('tableBody');
 
         resultsSection.style.display = 'block';
+        
         const aiCount = data.results.filter(r => r.is_ai_generated).length;
-        const editCount = data.results.filter(r => r.is_edited && !r.is_ai_generated).length;
+        const invalidCount = data.results.filter(r => r.ocr_data && (r.ocr_data.is_valid_timestamp === false || r.ocr_data.is_valid_watermark === false)).length;
         
         summaryBar.innerHTML = `
             <span>Processed ${data.processed} / ${data.total_images} images</span>
             <span style="font-size: 13px;">
-                <span style="color:var(--danger)">${aiCount} AI</span> &bull; 
-                <span style="color:var(--warning)">${editCount} Edited</span>
+                <span style="color:var(--danger)">${aiCount} AI / ${invalidCount} Invalid</span>
             </span>
         `;
         
@@ -197,17 +197,26 @@
             const tr = document.createElement('tr');
             
             let rowClass = 'row-success'; let badgeClass = 'badge-success'; let verdictText = 'ORIGINAL';
-            if (result.is_ai_generated && result.is_edited) { rowClass = 'row-danger'; badgeClass = 'badge-danger'; verdictText = 'FORGED & AI'; }
-            else if (result.is_ai_generated) { rowClass = 'row-danger'; badgeClass = 'badge-danger'; verdictText = 'AI GENERATED'; }
-            else if (result.is_edited) { rowClass = 'row-warning'; badgeClass = 'badge-warning'; verdictText = 'EDITED'; }
-            if (!result.success) { rowClass = 'row-warning'; badgeClass = 'badge-warning'; verdictText = 'ERROR'; }
+            
+            const isInvalidOCR = result.ocr_data && (result.ocr_data.is_valid_timestamp === false || result.ocr_data.is_valid_watermark === false);
+            
+            if (isInvalidOCR) {
+                rowClass = 'row-danger'; badgeClass = 'badge-danger'; verdictText = 'INVALID IMAGE';
+            } else if (result.is_ai_generated && result.is_edited) { 
+                rowClass = 'row-danger'; badgeClass = 'badge-danger'; verdictText = 'FORGED & AI'; 
+            } else if (result.is_ai_generated) { 
+                rowClass = 'row-danger'; badgeClass = 'badge-danger'; verdictText = 'AI GENERATED'; 
+            } else if (result.is_edited) { 
+                rowClass = 'row-warning'; badgeClass = 'badge-warning'; verdictText = 'EDITED'; 
+            } else if (!result.success) { 
+                rowClass = 'row-warning'; badgeClass = 'badge-warning'; verdictText = 'ERROR'; 
+            }
 
             tr.className = rowClass;
 
-            // Build OCR HTML
-            let ocrHtml = '<span style="color:#9CA3AF; font-style:italic;">No OCR data</span>';
-            let validTimeHtml = 'N/A';
-            let validMarkHtml = 'N/A';
+            let ocrHtml = '<span style="color:#9CA3AF; font-style:italic;">No data</span>';
+            let validTimeHtml = '<span style="color:#9CA3AF;">N/A</span>';
+            let validMarkHtml = '<span style="color:#9CA3AF;">N/A</span>';
 
             if (result.ocr_data && !result.ocr_data.error) {
                 const o = result.ocr_data;
@@ -216,32 +225,35 @@
                         <div><strong>GPS:</strong> ${o.latitude || 'N/A'}, ${o.longitude || 'N/A'}</div>
                         <div><strong>Time:</strong> ${o.timestamp || 'N/A'}</div>
                         <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;" title="${o.location || ''}"><strong>Loc:</strong> ${o.location || 'N/A'}</div>
-                        ${o.watermark ? `<div style="margin-top:4px; color:#6B7280; font-size:11px; font-style:italic;" title="${o.watermark}">Mark: ${o.watermark.substring(0, 25)}...</div>` : ''}
+                        ${o.watermark ? `<div style="margin-top:4px; color:#6B7280; font-size:11px; font-style:italic;" title="${o.watermark}">Mark: ${o.watermark.substring(0, 20)}...</div>` : ''}
                     </div>
                 `;
 
-                // Format Valid Time
                 if (o.is_valid_timestamp === true) validTimeHtml = '<span class="valid-text">✅ Valid</span>';
                 else if (o.is_valid_timestamp === false) validTimeHtml = '<span class="invalid-text">❌ Invalid</span>';
 
-                // Format Valid Mark
                 if (o.is_valid_watermark === true) validMarkHtml = '<span class="valid-text">✅ Valid</span>';
                 else if (o.is_valid_watermark === false) validMarkHtml = '<span class="invalid-text">❌ Invalid</span>';
-            } else if (result.ocr_data && result.ocr_data.error) {
-                ocrHtml = `<span style="color:red; font-size:12px;">${result.ocr_data.error}</span>`;
-                validTimeHtml = '<span style="color:red;">Error</span>';
-                validMarkHtml = '<span style="color:red;">Error</span>';
             }
 
-            // Build Details HTML
-            let detailsHtml = `<div class="details-grid"><div class="detail-item"><strong>Format:</strong> ${result.format || 'N/A'}</div><div class="detail-item"><strong>Dimensions:</strong> ${result.dimensions || 'N/A'}</div>`;
-            if (result.success && result.ai_detection && result.ai_detection.success) {
-                const score = (result.ai_detection.ai_score * 100).toFixed(1);
-                const color = result.ai_detection.ai_score >= 0.4 ? 'var(--danger)' : 'var(--success)';
-                detailsHtml += `<div class="detail-item" style="grid-column: span 2;"><strong>AI Conf:</strong> <span style="color:${color}; font-weight:bold;">${score}%</span></div>`;
+            let detailsHtml = '';
+            if (isInvalidOCR) {
+                detailsHtml = `<div style="color:var(--danger); font-weight:bold; font-size:13px;">Skipped (Failed Watermark Validation)</div>`;
+            } else {
+                detailsHtml = `<div class="details-grid">
+                    <div class="detail-item"><strong>Format:</strong> ${result.format || 'N/A'}</div>
+                    <div class="detail-item"><strong>Dimensions:</strong> ${result.dimensions || 'N/A'}</div>`;
+                
+                if (result.success && result.ai_detection && result.ai_detection.success) {
+                    const score = (result.ai_detection.ai_score * 100).toFixed(1);
+                    const color = result.ai_detection.ai_score >= 0.4 ? 'var(--danger)' : 'var(--success)';
+                    detailsHtml += `<div class="detail-item" style="grid-column: span 2;"><strong>AI Conf:</strong> <span style="color:${color}; font-weight:bold;">${score}%</span></div>`;
+                }
+                if (!result.success) { 
+                    detailsHtml += `<div class="detail-item" style="grid-column: span 2; color:red; font-weight:bold;">${result.error}</div>`; 
+                }
+                detailsHtml += `</div>`;
             }
-            if (!result.success) { detailsHtml += `<div class="detail-item" style="grid-column: span 2; color:red; font-weight:bold;">${result.error}</div>`; }
-            detailsHtml += `</div>`;
 
             tr.innerHTML = `
                 <td><div class="thumb-container"><img src="${base64Images[index]}" class="thumb" alt="Thumb"><div class="file-name-label" title="${originalFileName}">${displayName}</div></div></td>
