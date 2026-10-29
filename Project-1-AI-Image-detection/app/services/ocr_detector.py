@@ -29,7 +29,7 @@ class AttendanceOCR:
             img.save(buffer, format="JPEG", quality=85)
             return buffer.getvalue()
 
-        def extract_attendance_data(self, image_path: str) -> dict:
+    def extract_attendance_data(self, image_path: str) -> dict:
         if not self.client:
             return {"error": "Gemini API key missing."}
 
@@ -70,6 +70,7 @@ class AttendanceOCR:
 
             Return ONLY valid JSON.
             """
+
             models_to_try = [
                 self.model_id,          
                 "gemini-2.5-flash-lite",
