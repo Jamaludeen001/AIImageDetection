@@ -115,12 +115,13 @@ async def process_single_image(input_str: str) -> ImageResponse:
         
     ocr_report = OCRReport(**ocr_raw)
     
-    # 🛑 GATEKEEPER LOGIC: Reject immediately if validation fails
-    is_valid_time = ocr_report.is_valid_timestamp
-    is_valid_mark = ocr_report.is_valid_watermark
+    # 🛑 GATEKEEPER LOGIC: Reject only if timestamp is invalid OR if watermark exists but is invalid.
+    # If the watermark is completely missing (null), we pass it to the next layers.
+    is_invalid_time = ocr_report.is_valid_timestamp is False
+    is_invalid_mark = (ocr_report.watermark is not None) and (ocr_report.is_valid_watermark is False)
 
-    if is_valid_time is False or is_valid_mark is False:
-        logger.warning(f"Image rejected by OCR Gatekeeper: Valid Time={is_valid_time}, Valid Mark={is_valid_mark}")
+    if is_invalid_time or is_invalid_mark:
+        logger.warning(f"Image rejected by OCR Gatekeeper: Invalid Time={is_invalid_time}, Invalid Mark={is_invalid_mark}")
         if temp_path: os.remove(temp_path)
         
         display_path = input_str if not input_str.startswith("data:image") else "[Base64 String]"
