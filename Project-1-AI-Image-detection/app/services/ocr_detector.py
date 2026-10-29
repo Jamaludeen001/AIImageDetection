@@ -29,7 +29,7 @@ class AttendanceOCR:
             img.save(buffer, format="JPEG", quality=85)
             return buffer.getvalue()
 
-    def extract_attendance_data(self, image_path: str) -> dict:
+        def extract_attendance_data(self, image_path: str) -> dict:
         if not self.client:
             return {"error": "Gemini API key missing."}
 
@@ -46,7 +46,10 @@ class AttendanceOCR:
             3. "location": The full address text shown.
             4. "accuracy": The GPS accuracy (e.g., 23.2 m).
             5. "timestamp": Read the date and time printed in the GPS box. If logically invalid, return "invalid".
-            6. "watermark": Extract the repeating diagonal text stamped across the image.
+            
+            6. "watermark": Look for the REPEATING DIAGONAL text stamped across the photo. 
+               - DO NOT extract the static text at the bottom of the GPS box that says "This photo is taken from HRMS DRAIVF application".
+               - ONLY extract the diagonal repeating stamp. If there is NO diagonal watermark anywhere in the image, return null.
 
             STRICT VALIDATION RULES:
             7. "is_valid_timestamp": 
@@ -55,18 +58,18 @@ class AttendanceOCR:
 
             8. "is_valid_watermark": 
                - This key MUST be a boolean (true or false).
+               - If the "watermark" field is null, this MUST be false.
                - TRUE ONLY IF ALL of the following are met:
-                 a) The watermark text is clean, legible, and follows the pattern "HRMS DRAIVF • [Date] • [Coordinates]".
-                 b) The Date/Time inside the watermark EXACTLY MATCHES the Date/Time in the GPS box.
-                 c) The characters within the same diagonal string are clearly separated and readable.
+                 a) The diagonal watermark is present and clearly readable.
+                 b) The text strictly follows the pattern: "HRMS DRAIVF • [Date] • [Coordinates]".
+                 c) The Date/Time inside the diagonal watermark EXACTLY MATCHES the Date/Time in the GPS box.
                - FALSE if ANY of the following occur:
-                 a) The watermark is missing.
-                 b) The timestamp in the watermark does NOT match the GPS box.
-                 c) CHARACTER COLLISION: The characters within the same diagonal string are tangled, scrambled, or overlapping each other (e.g., the end of one timestamp is crashing into the start of the next repeating timestamp within the same diagonal line).
+                 a) The diagonal watermark is completely MISSING from the image.
+                 b) The text is overlapping/scrambled so badly it breaks the pattern.
+                 c) The timestamp in the watermark does NOT match the timestamp in the GPS box.
 
             Return ONLY valid JSON.
             """
-
             models_to_try = [
                 self.model_id,          
                 "gemini-2.5-flash-lite",
