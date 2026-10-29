@@ -45,8 +45,8 @@ class AttendanceOCR:
             2. "longitude": The raw longitude number ONLY (e.g., 80.206531).
             3. "location": The full address text shown.
             4. "accuracy": The GPS accuracy (e.g., 23.2 m).
-            5. "timestamp": Read the date and time printed in the GPS box. If logically invalid (e.g., "20:00:00 AM"), return "invalid".
-            6. "watermark": Extract the repeating diagonal text stamped across the image. If there is NO watermark anywhere in the image, return null.
+            5. "timestamp": Read the date and time printed in the GPS box. If logically invalid, return "invalid".
+            6. "watermark": Extract the repeating diagonal text stamped across the image.
 
             STRICT VALIDATION RULES:
             7. "is_valid_timestamp": 
@@ -54,16 +54,15 @@ class AttendanceOCR:
                - FALSE if logically impossible (e.g., hour > 12 with AM/PM).
 
             8. "is_valid_watermark": 
-               - This key MUST be a boolean (true or false). Do NOT return "invalid" or "missing".
+               - This key MUST be a boolean (true or false).
                - TRUE ONLY IF ALL of the following are met:
-                 a) The watermark is present and readable.
-                 b) The text strictly follows the pattern: "HRMS DRAIVF • [Date] • [Coordinates]".
-                 c) The Date/Time inside the watermark EXACTLY MATCHES the Date/Time in the GPS box (step 5).
+                 a) The watermark text is clean, legible, and follows the pattern "HRMS DRAIVF • [Date] • [Coordinates]".
+                 b) The Date/Time inside the watermark EXACTLY MATCHES the Date/Time in the GPS box.
+                 c) The characters within the same diagonal string are clearly separated and readable.
                - FALSE if ANY of the following occur:
-                 a) The watermark is completely MISSING from the image.
-                 b) The text is overlapping/blurred so badly it breaks the pattern.
-                 c) The text does not follow the "HRMS DRAIVF" pattern.
-                 d) The timestamp in the watermark does NOT match the timestamp in the GPS box.
+                 a) The watermark is missing.
+                 b) The timestamp in the watermark does NOT match the GPS box.
+                 c) CHARACTER COLLISION: The characters within the same diagonal string are tangled, scrambled, or overlapping each other (e.g., the end of one timestamp is crashing into the start of the next repeating timestamp within the same diagonal line).
 
             Return ONLY valid JSON.
             """
