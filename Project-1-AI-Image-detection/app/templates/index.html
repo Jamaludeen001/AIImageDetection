@@ -181,7 +181,7 @@
         
         const aiCount = data.results.filter(r => r.is_ai_generated).length;
         const editCount = data.results.filter(r => r.is_edited).length;
-        const invalidCount = data.results.filter(r => r.ocr_data && (r.ocr_data.is_valid_timestamp === false || r.ocr_data.is_valid_watermark === false)).length;
+        const invalidCount = data.results.filter(r => r.ocr_data && (r.ocr_data.is_valid_timestamp === false || (r.ocr_data.watermark !== null && r.ocr_data.is_valid_watermark === false))).length;
         
         summaryBar.innerHTML = `
             <span>Processed ${data.processed} / ${data.total_images} images</span>
@@ -201,7 +201,11 @@
             
             let rowClass = 'row-success'; let badgeClass = 'badge-success'; let verdictText = 'ORIGINAL';
             
-            const isInvalidOCR = result.ocr_data && (result.ocr_data.is_valid_timestamp === false || result.ocr_data.is_valid_watermark === false);
+            // Check OCR logic properly: Invalid if Time is false, OR if Watermark exists but is false.
+            const isInvalidOCR = result.ocr_data && (
+                result.ocr_data.is_valid_timestamp === false || 
+                (result.ocr_data.watermark !== null && result.ocr_data.is_valid_watermark === false)
+            );
             
             if (isInvalidOCR) {
                 rowClass = 'row-danger'; badgeClass = 'badge-danger'; verdictText = 'INVALID IMAGE';
@@ -235,17 +239,17 @@
                 if (o.is_valid_timestamp === true) validTimeHtml = '<span class="valid-text">✅ Valid</span>';
                 else if (o.is_valid_timestamp === false) validTimeHtml = '<span class="invalid-text">❌ Invalid</span>';
 
+                // Only show Invalid for watermark if it exists but is false.
                 if (o.is_valid_watermark === true) validMarkHtml = '<span class="valid-text">✅ Valid</span>';
-                else if (o.is_valid_watermark === false) validMarkHtml = '<span class="invalid-text">❌ Invalid</span>';
+                else if (o.watermark !== null && o.is_valid_watermark === false) validMarkHtml = '<span class="invalid-text">❌ Invalid</span>';
+                else validMarkHtml = '<span style="color:#9CA3AF; font-style:italic;">None</span>';
             }
 
             let detailsHtml = '';
             
-            // If Gatekeeper failed
             if (isInvalidOCR) {
                 detailsHtml = `<div style="color:var(--danger); font-weight:bold; font-size:13px;">Skipped (Failed Watermark/Time Validation)</div>`;
             } 
-            // If Forensics caught an edit (AI was skipped)
             else if (result.is_edited) {
                 detailsHtml = `<div class="details-grid">
                     <div class="detail-item"><strong>Format:</strong> ${result.format || 'N/A'}</div>
@@ -255,7 +259,6 @@
                     </div>
                 </div>`;
             }
-            // If everything passed and ran normally
             else {
                 detailsHtml = `<div class="details-grid">
                     <div class="detail-item"><strong>Format:</strong> ${result.format || 'N/A'}</div>
