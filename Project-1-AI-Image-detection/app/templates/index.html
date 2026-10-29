@@ -180,12 +180,15 @@
         resultsSection.style.display = 'block';
         
         const aiCount = data.results.filter(r => r.is_ai_generated).length;
+        const editCount = data.results.filter(r => r.is_edited).length;
         const invalidCount = data.results.filter(r => r.ocr_data && (r.ocr_data.is_valid_timestamp === false || r.ocr_data.is_valid_watermark === false)).length;
         
         summaryBar.innerHTML = `
             <span>Processed ${data.processed} / ${data.total_images} images</span>
             <span style="font-size: 13px;">
-                <span style="color:var(--danger)">${aiCount} AI / ${invalidCount} Invalid</span>
+                <span style="color:var(--danger)">${aiCount} AI</span> &bull; 
+                <span style="color:var(--warning)">${editCount} Edited</span> &bull;
+                <span style="color:var(--danger)">${invalidCount} Invalid</span>
             </span>
         `;
         
@@ -237,9 +240,23 @@
             }
 
             let detailsHtml = '';
+            
+            // If Gatekeeper failed
             if (isInvalidOCR) {
-                detailsHtml = `<div style="color:var(--danger); font-weight:bold; font-size:13px;">Skipped (Failed Watermark Validation)</div>`;
-            } else {
+                detailsHtml = `<div style="color:var(--danger); font-weight:bold; font-size:13px;">Skipped (Failed Watermark/Time Validation)</div>`;
+            } 
+            // If Forensics caught an edit (AI was skipped)
+            else if (result.is_edited) {
+                detailsHtml = `<div class="details-grid">
+                    <div class="detail-item"><strong>Format:</strong> ${result.format || 'N/A'}</div>
+                    <div class="detail-item"><strong>Dimensions:</strong> ${result.dimensions || 'N/A'}</div>
+                    <div class="detail-item" style="grid-column: span 2; color:var(--warning); font-weight:bold;">
+                        Skipped (Edited image caught by Forensics)
+                    </div>
+                </div>`;
+            }
+            // If everything passed and ran normally
+            else {
                 detailsHtml = `<div class="details-grid">
                     <div class="detail-item"><strong>Format:</strong> ${result.format || 'N/A'}</div>
                     <div class="detail-item"><strong>Dimensions:</strong> ${result.dimensions || 'N/A'}</div>`;
