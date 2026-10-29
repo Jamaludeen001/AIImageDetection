@@ -72,6 +72,7 @@ def decode_base64_to_temp(base64_str: str) -> str:
 async def process_single_image(input_str: str) -> ImageResponse:
     temp_path = None
     
+    # --- 1. Input Routing ---
     if input_str.startswith("data:image") or (len(input_str) > 200 and "base64" in input_str[:30]):
         loop = asyncio.get_running_loop()
         temp_path = await loop.run_in_executor(None, decode_base64_to_temp, input_str)
@@ -95,6 +96,7 @@ async def process_single_image(input_str: str) -> ImageResponse:
         if img_path.suffix.lower() not in ALLOWED_EXTENSIONS:
             return ImageResponse(success=False, imgpath=input_str, error="Unsupported extension")
 
+    # --- 2. Image Validation ---
     try:
         with Image.open(img_path) as im:
             width, height = im.size
@@ -105,14 +107,44 @@ async def process_single_image(input_str: str) -> ImageResponse:
 
     loop = asyncio.get_running_loop()
     
-    # Layer 1
+    # --- 3. LAYER 1: OCR EXTRACTION (GATEKEEPER) ---
+    ocr_raw = await loop.run_in_executor(None, attendance_ocr.extract_attendance_data, str(img_path))
+    if "error" in ocr_raw:
+        if temp_path: os.remove(temp_path)
+        return ImageResponse(success=False, imgpath=input_str, error=f"OCR error: {ocr_raw['error']}")
+        
+    ocr_report = OCRReport(**ocr_raw)
+    
+    # 🛑 GATEKEEPER LOGIC: Reject immediately if validation fails
+    is_valid_time = ocr_report.is_valid_timestamp
+    is_valid_mark = ocr_report.is_valid_watermark
+
+    if is_valid_time is False or is_valid_mark is False:
+        logger.warning(f"Image rejected by OCR Gatekeeper: Valid Time={is_valid_time}, Valid Mark={is_valid_mark}")
+        if temp_path: os.remove(temp_path)
+        
+        display_path = input_str if not input_str.startswith("data:image") else "[Base64 String]"
+        
+        return ImageResponse(
+            success=True, 
+            imgpath=display_path,
+            dimensions=f"{width}x{height}",
+            format=img_format,
+            is_edited=None, 
+            is_ai_generated=None,
+            ai_detection=None,
+            forensics=None,
+            ocr_data=ocr_report
+        )
+
+    # --- 4. LAYER 2: FORENSICS (Only runs if OCR passes) ---
     forensics_raw = await loop.run_in_executor(None, forensics_engine.analyze_image, str(img_path))
     if "error" in forensics_raw:
         if temp_path: os.remove(temp_path)
         return ImageResponse(success=False, imgpath=input_str, error=f"Forensics error: {forensics_raw['error']}")
     forensics_report = ForensicsReport(**forensics_raw)
 
-    # Layer 2
+    # --- 5. LAYER 3: AI DETECTION (Only runs if Forensics passes) ---
     ai_report = None
     if not forensics_raw["is_edited"]:
         ai_raw = await trigger_ai_detector_production(str(img_path))
@@ -121,10 +153,7 @@ async def process_single_image(input_str: str) -> ImageResponse:
         else:
             ai_report = AIDetectionReport(**ai_raw)
 
-    # Layer 3
-    ocr_raw = await loop.run_in_executor(None, attendance_ocr.extract_attendance_data, str(img_path))
-    ocr_report = OCRReport(**ocr_raw) if "error" not in ocr_raw else OCRReport(error=ocr_raw["error"])
-
+    # --- 6. Cleanup ---
     if temp_path:
         try: os.remove(temp_path)
         except: pass
