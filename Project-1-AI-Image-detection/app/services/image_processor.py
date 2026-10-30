@@ -107,21 +107,17 @@ async def process_single_image(input_str: str) -> ImageResponse:
 
     loop = asyncio.get_running_loop()
     
-    # --- 3. LAYER 1: OCR EXTRACTION (GATEKEEPER) ---
-    ocr_raw = await loop.run_in_executor(None, attendance_ocr.extract_attendance_data, str(img_path))
-    if "error" in ocr_raw:
+    # --- 3. LAYER 1: FORENSICS (GATEKEEPER) ---
+    forensics_raw = await loop.run_in_executor(None, forensics_engine.analyze_image, str(img_path))
+    if "error" in forensics_raw:
         if temp_path: os.remove(temp_path)
-        return ImageResponse(success=False, imgpath=input_str, error=f"OCR error: {ocr_raw['error']}")
-        
-    ocr_report = OCRReport(**ocr_raw)
+        return ImageResponse(success=False, imgpath=input_str, error=f"Forensics error: {forensics_raw['error']}")
     
-    # 🛑 GATEKEEPER LOGIC: Reject only if timestamp is invalid OR if watermark exists but is invalid.
-    # If the watermark is completely missing (null), we pass it to the next layers.
-    is_invalid_time = ocr_report.is_valid_timestamp is False
-    is_invalid_mark = (ocr_report.watermark is not None) and (ocr_report.is_valid_watermark is False)
+    forensics_report = ForensicsReport(**forensics_raw)
 
-    if is_invalid_time or is_invalid_mark:
-        logger.warning(f"Image rejected by OCR Gatekeeper: Invalid Time={is_invalid_time}, Invalid Mark={is_invalid_mark}")
+    # 🛑 If Forensics finds an editor, stop immediately and save API costs.
+    if forensics_raw["is_edited"]:
+        logger.warning("Image rejected by Forensics: Editing software detected.")
         if temp_path: os.remove(temp_path)
         
         display_path = input_str if not input_str.startswith("data:image") else "[Base64 String]"
@@ -131,32 +127,49 @@ async def process_single_image(input_str: str) -> ImageResponse:
             imgpath=display_path,
             dimensions=f"{width}x{height}",
             format=img_format,
-            is_edited=None, 
+            is_edited=True, 
             is_ai_generated=None,
             ai_detection=None,
-            forensics=None,
+            forensics=forensics_report,
+            ocr_data=None # OCR skipped
+        )
+
+    # --- 4. LAYER 2: OCR EXTRACTION ---
+    ocr_raw = await loop.run_in_executor(None, attendance_ocr.extract_attendance_data, str(img_path))
+    if "error" in ocr_raw:
+        if temp_path: os.remove(temp_path)
+        return ImageResponse(success=False, imgpath=input_str, error=f"OCR error: {ocr_raw['error']}")
+        
+    ocr_report = OCRReport(**ocr_raw)
+    
+    # 🛑 Check OCR gatekeeper rules
+    is_invalid_time = ocr_report.is_valid_timestamp is False
+    is_invalid_mark = (ocr_report.watermark is not None) and (ocr_report.is_valid_watermark is False)
+
+    if is_invalid_time or is_invalid_mark:
+        logger.warning(f"Image rejected by OCR Gatekeeper.")
+        if temp_path: os.remove(temp_path)
+        
+        display_path = input_str if not input_str.startswith("data:image") else "[Base64 String]"
+        
+        return ImageResponse(
+            success=True, 
+            imgpath=display_path,
+            dimensions=f"{width}x{height}",
+            format=img_format,
+            is_edited=False, 
+            is_ai_generated=None,
+            ai_detection=None,
+            forensics=forensics_report,
             ocr_data=ocr_report
         )
 
-    # --- 4. LAYER 2: FORENSICS (Only runs if OCR passes) ---
-    forensics_raw = await loop.run_in_executor(None, forensics_engine.analyze_image, str(img_path))
-    if "error" in forensics_raw:
-        if temp_path: os.remove(temp_path)
-        return ImageResponse(success=False, imgpath=input_str, error=f"Forensics error: {forensics_raw['error']}")
-    forensics_report = ForensicsReport(**forensics_raw)
-
-    # --- 5. LAYER 3: AI DETECTION (Only runs if Forensics passes) ---
-    ai_report = None
-    
-    # 🛑 Check if the image was edited based on forensics
-    if forensics_raw["is_edited"]:
-        logger.info("Image flagged as EDITED by forensics. Skipping AI detection to save costs.")
+    # --- 5. LAYER 3: AI DETECTION ---
+    ai_raw = await trigger_ai_detector_production(str(img_path))
+    if "error" in ai_raw:
+        ai_report = AIDetectionReport(success=False, error=ai_raw["error"])
     else:
-        ai_raw = await trigger_ai_detector_production(str(img_path))
-        if "error" in ai_raw:
-            ai_report = AIDetectionReport(success=False, error=ai_raw["error"])
-        else:
-            ai_report = AIDetectionReport(**ai_raw)
+        ai_report = AIDetectionReport(**ai_raw)
 
     # --- 6. Cleanup ---
     if temp_path:
