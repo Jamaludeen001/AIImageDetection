@@ -33,7 +33,7 @@ async def add_request_id(request: Request, call_next):
     return response
 
 # --- Templates setup ---
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
