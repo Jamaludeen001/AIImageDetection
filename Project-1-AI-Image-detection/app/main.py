@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from app.logging_config import new_request_id, request_id_var, setup_logging
 from app.routers.punch_router import router as punch_router
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 setup_logging()
 
