@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
 from app.logging_config import new_request_id, request_id_var, setup_logging
 from app.routers.punch_router import router as punch_router
@@ -29,5 +31,16 @@ async def add_request_id(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     return response
 
+# --- Templates setup ---
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ui(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="sample.html",
+        context={},  # add template variables here if needed
+    )
+# -----------------------
 app.include_router(punch_router)
