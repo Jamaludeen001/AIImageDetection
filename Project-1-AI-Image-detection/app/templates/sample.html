@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Submit Punching Request</title>
+<style>
+:root{color-scheme:light;--blue:#5b6fe0;--ink:#2c3340;--lab:#5a6472;--mute:#8a94a3;--line:#dde2e8;--red:#e03e3e;--ok:#1f6b2f;--ok-bg:#e4f3e6;--warn:#7a4a06;--warn-bg:#fbefd5;--bad:#8c2222;--bad-bg:#fbe6e6}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6fb;color:var(--ink);font:15px/1.5 "Source Sans 3","Source Sans Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.page{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 8px rgba(40,50,90,.1);padding:20px 26px 26px;margin-bottom:18px}
+.head{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--blue);padding-bottom:10px;margin-bottom:14px}
+h1{display:flex;align-items:center;gap:8px;margin:0;font-size:20px;font-weight:600;color:#6577e6}
+h1 svg{width:19px;height:19px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:#6f49b8;color:#fff;border:0;border-radius:99px;padding:5px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.pill svg{width:13px;height:13px}
+.note{background:#eef1fc;border-left:4px solid var(--blue);padding:10px 14px;margin:0 0 14px;font-size:14px;color:var(--lab)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+@media (max-width:760px){.g2{grid-template-columns:1fr}.card{padding:16px}}
+[hidden]{display:none!important}
+.fld{margin-bottom:12px}
+label{display:block;color:var(--lab);margin-bottom:4px}
+label i{color:var(--red);font-style:normal}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:2px;padding:7px 12px;height:38px}
+textarea{height:108px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid rgba(91,111,224,.45);outline-offset:0;border-color:var(--blue)}
+.calc{background:#e9ecef;color:#aab2bd;font-size:18px;font-weight:600;cursor:not-allowed}
+small{display:block;color:var(--mute);font-size:12.5px;margin-top:3px}
+small svg{width:10px;height:10px;vertical-align:-1px}
+.pick{display:flex;align-items:center;gap:8px;min-height:38px}
+.pick button{font:inherit;background:#efefef;border:1px solid #767676;border-radius:3px;padding:2px 8px;cursor:pointer;transition:.2s}
+.pick button:disabled{opacity:.5;cursor:not-allowed;background:#e0e0e0}
+.must{color:#d63b3b;font-weight:700;text-transform:uppercase;font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:6px;padding:3px 6px 3px 3px;max-width:100%}
+.chip img{width:36px;height:36px;object-fit:cover;border-radius:4px}
+.chip span{font-size:13px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{border:0;background:none;font-size:18px;line-height:1;color:var(--mute);cursor:pointer}
+.bar{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:14px}
+#msg{margin:0 auto 0 0;font-size:14px;color:var(--red);font-weight:600}
+.reset{display:inline-flex;align-items:center;gap:6px;background:#e9ecef;color:#444;border:0;border-radius:3px;padding:9px 16px;font:inherit;cursor:pointer}
+.reset svg,.send svg{width:14px;height:14px}
+.send{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:0;border-radius:4px;padding:15px 36px;font:inherit;font-weight:700;cursor:pointer}
+.send:disabled{opacity:.6;cursor:wait}
+h2{font-size:17px;font-weight:600;margin:0 0 12px}
+.verdict{border-radius:8px;padding:14px 16px;border:1px solid}
+.verdict b{display:block;font-size:18px}
+.verdict p{margin:3px 0 0;overflow-wrap:anywhere}
+.s-real{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+.s-pending{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+.s-rejected{background:var(--bad-bg);color:var(--bad);border-color:var(--bad)}
+.ph{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-top:12px}
+.ph header{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
+.ph header strong{overflow-wrap:anywhere}
+.tag{font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;white-space:nowrap}
+.ph p{margin:0 0 8px;font-size:13.5px;overflow-wrap:anywhere}
+dl{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:0;font-size:13.5px}
+dt{color:var(--mute)}dd{margin:0;overflow-wrap:anywhere}
+details{margin-top:14px}summary{cursor:pointer;font-weight:600}
+details label{margin-top:10px}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px}
+.row button{font:inherit;padding:6px 12px;border:1px solid var(--line);background:#fff;border-radius:4px;cursor:pointer;white-space:nowrap}
+pre{max-height:240px;overflow:auto;font-size:12px;background:#f4f6fb;padding:10px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="card">
+<div class="head">
+<h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/></svg>Submit Punching Request</h1>
+<button type="button" class="pill" id="info"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1a11 11 0 100 22 11 11 0 000-22zm1.2 5.2a1.4 1.4 0 11-2.4 0 1.4 1.4 0 012.4 0zM10.5 10h2.2v8h-2.2z"/></svg>Instructions</button>
+</div>
+<p class="note" id="note" hidden>Upload JPG or PNG photos taken with a GPS camera app that shows the date, time and location. The time on the photo must match the time you enter, and the photo must be taken at the office.</p>
+
+<form id="f" novalidate>
+<div class="g2">
+<div class="fld"><label for="date">Attendance Date <i>*</i></label><input type="date" id="date"><small>Select the date for adjustment</small></div>
+<div class="fld"><label for="type">Adjustment Type <i>*</i></label>
+<select id="type">
+<option value="0">Regular Adjustment (Add Minutes)</option>
+<option value="1">Static On-Site (Fixed 9:30-18:30)</option>
+<option value="2">Semi Punch (Same Check-in &amp; Check-out)</option>
+<option value="3">Check-In Time Correction (Wrong Check-In Recorded)</option>
+</select><small>Choose adjustment type</small></div>
+</div>
+
+<div class="g2" data-for="0">
+<div class="fld"><label for="out0">Actual Check-Out Time <i>*</i></label><input type="time" id="out0"><small>Enter the time you actually left the office</small></div>
+<div class="fld"><label>Adjustment Minutes <i>*</i></label><input class="calc" value="Auto-calculated" disabled aria-label="Adjustment minutes, calculated automatically"><small><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10V8a6 6 0 1112 0v2h1v12H5V10zm2 0h8V8a4 4 0 10-8 0z"/></svg> Auto-calculated from (Actual Check-Out − Existing Check-Out)</small></div>
+</div>
+
+<div class="g2" data-for="1" hidden>
+<div class="fld"><label for="in1">Check-In Time <i>*</i></label><input type="time" id="in1" value="09:30"><small>Default: 09:30 AM</small></div>
+<div class="fld"><label for="out1">Check-Out Time <i>*</i></label><input type="time" id="out1" value="18:30"><small>Default: 06:30 PM</small></div>
+</div>
+
+<div class="g2" data-for="2" hidden>
+<div class="fld"><label for="miss">Missing Punch Type <i>*</i></label>
+<select id="miss"><option value="">-- Select Missing Punch --</option><option>Check-in</option><option>Check-out</option></select><small>Choose which punch is missing</small></div>
+<div class="fld"><label for="time2">Missing Punch Time <i>*</i></label><input type="time" id="time2"><small>The time shown on the proof photo</small></div>
+</div>
+
+<div class="g2" data-for="3" hidden>
+<div class="fld"><label for="in3">Actual Check-In Time (Corrected) <i>*</i></label><input type="time" id="in3"><small>Enter the time you actually arrived at the office</small></div>
+<div class="fld"><label>Adjustment Minutes <i>*</i></label><input class="calc" value="Auto-calculated" disabled aria-label="Adjustment minutes, calculated automatically"><small><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10V8a6 6 0 1112 0v2h1v12H5V10zm2 0h8V8a4 4 0 10-8 0z"/></svg> Auto-calculated from (Wrong Check-In − Actual Check-In)</small></div>
+</div>
+
+<div class="g2">
+<div class="fld"><label for="by">Requested By <i>*</i></label><input id="by" value="Dr. Aravind MD"><small>Your name</small></div>
+<div class="fld"><label>Upload Proof <i>*</i></label>
+<div class="pick"><button type="button" id="choose">Choose files</button><span id="count">No file chosen</span></div>
+<input type="file" id="file" accept="image/jpeg,image/png" multiple hidden>
+<small><span class="must">Mandatory</span> - JPG, PNG (Max 10MB each). <span id="req-hint" style="font-weight:600;color:var(--blue);">Max 1 file</span></small>
+<div class="chips" id="chips"></div></div>
+</div>
+
+<div class="fld"><label for="reason">Adjustment Reason <i>*</i></label><textarea id="reason" maxlength="255" placeholder="Please provide detailed reason for adjustment request..."></textarea><small>Maximum 255 characters</small></div>
+
+<div class="bar">
+<p id="msg" role="alert"></p>
+<button type="button" class="reset" id="reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 00-14-4L4 9M4 4v5h5M4 13a8 8 0 0014 4l2-2M20 20v-5h-5"/></svg>Reset</button>
+<button type="submit" class="send" id="send"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 2L2 10.5l7 3 3 7zM9.5 13.5l8-7"/></svg>Submit Request</button>
+</div>
+</form>
+</div>
+
+<div class="card" id="res" hidden aria-live="polite"></div>
+
+<div class="card">
+<details>
+<summary>Test setup</summary>
+<label for="api">API Base URL (no trailing slash)</label><input id="api" type="url" value="http://127.0.0.1:8000">
+<label for="token">Access token (optional)</label><input id="token" type="password" autocomplete="off">
+<div class="g2"><div><label for="lat">Office latitude</label><input id="lat" type="number" step="any"></div><div><label for="lng">Office longitude</label><input id="lng" type="number" step="any"></div></div>
+<div class="row"><button type="button" id="health">Test connection</button><small id="hout" style="margin:0" aria-live="polite"></small></div>
+</details>
+</div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+
+const RULES={
+  0:{min:1,max:1,text:"Regular adjustment allows at most 1 file.",hint:"At most 1 file"},
+  1:{min:2,max:2,text:"Static on-site needs exactly two photos: one check-in and one check-out.",hint:"Requires exactly 2 files"},
+  2:{min:1,max:1,text:"Semi punch needs exactly one photo of the missing punch.",hint:"At most 1 file"},
+  3:{min:1,max:1,text:"Check-in correction needs exactly one check-in photo.",hint:"At most 1 file"}
+};
+
+const LABEL={real:"Verified",pending:"Needs review",rejected:"Rejected"};
+let files=[];
+const d=new Date();$("#date").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+try{const a=localStorage.getItem("punch_api");if(a)$("#api").value=a}catch(e){}
+
+function applyType(){
+  const t=$("#type").value;
+  document.querySelectorAll("[data-for]").forEach(p=>p.hidden=p.dataset.for!==t);
+  
+  $("#req-hint").textContent = RULES[t].hint;
+
+  if (files.length > RULES[t].max) {
+    files = []; 
+    drawChips();
+    $("#msg").textContent = "Your previously selected files were cleared because this type allows at most " + RULES[t].max + " file(s). Please re-upload.";
+  }
+
+  const chooseBtn = $("#choose");
+  chooseBtn.disabled = (files.length >= RULES[t].max);
+}
+$("#type").onchange=()=>{applyType(); if(!files.length) $("#msg").textContent=""};applyType();
+$("#info").onclick=()=>{const n=$("#note");n.hidden=!n.hidden};
+
+function drawChips(){
+  const box=$("#chips");box.replaceChildren();
+  $("#count").textContent=files.length?files.length+" file"+(files.length>1?"s":"")+" selected":"No file chosen";
+  
+  const t = $("#type").value;
+  $("#choose").disabled = (files.length >= RULES[t].max);
+
+  files.forEach((f,i)=>{
+    const c=el("div","chip");const im=el("img");im.src=f.url;im.alt="";
+    const x=el("button",null,"\u00d7");x.type="button";x.setAttribute("aria-label","Remove "+f.name);
+    x.onclick=()=>{
+      files.splice(i,1);
+      drawChips();
+      $("#msg").textContent=""; 
+    };
+    c.append(im,el("span",null,f.name),x);box.append(c);
+  });
+}
+
+function read(file){
+  return new Promise((ok,no)=>{
+    const r=new FileReader();
+    r.onload=()=>ok(String(r.result));
+    r.onerror=no;
+    r.readAsDataURL(file);
+  });
+}
+
+$("#choose").onclick=()=>$("#file").click();
+$("#file").onchange=async e=>{
+  const t = $("#type").value;
+  const maxFiles = RULES[t].max;
+  const bad=[];
+  
+  const validIncoming = Array.from(e.target.files).filter(f => {
+    if (!/^image\/(jpeg|png)$/.test(f.type) || f.size > 10 * 1048576) {
+      bad.push(f.name);
+      return false;
+    }
+    return true;
+  });
+
+  if (validIncoming.length > maxFiles) {
+    e.target.value="";
+    $("#msg").textContent = `You selected ${validIncoming.length} files, but this adjustment type allows at most ${maxFiles}. Please select fewer files.`;
+    return; 
+  }
+
+  if (files.length + validIncoming.length > maxFiles) {
+    e.target.value="";
+    $("#msg").textContent = `You already have ${files.length} file(s) selected. You can only add up to ${maxFiles} in total.`;
+    return; 
+  }
+
+  let msgs = [];
+  if (bad.length) msgs.push("Skipped " + bad.join(", ") + " (Invalid format or >10MB).");
+
+  for(const f of validIncoming){
+    const url=await read(f);
+    files.push({name:f.name,url,b64:url.split(",")[1]});
+  }
+
+  e.target.value=""; 
+  drawChips(); 
+
+  $("#msg").textContent = msgs.join(" ");
+};
+
+$("#reset").onclick=()=>{
+  $("#f").reset();
+  files=[];
+  drawChips();
+  applyType();
+  $("#msg").textContent="";
+  $("#res").hidden=true;
+};
+
+function times(){
+  const t=$("#type").value;
+  if(t==="0")return[$("#out0").value];
+  if(t==="1")return[$("#in1").value,$("#out1").value];
+  if(t==="2")return[$("#time2").value];
+  return[$("#in3").value];
+}
+
+function problem(){
+  const t=$("#type").value;
+  if(!$("#date").value)return"Choose the attendance date.";
+  if(t==="0"&&!$("#out0").value)return"Enter the actual check-out time.";
+  if(t==="1"){
+    if(!$("#in1").value||!$("#out1").value)return"Enter both the check-in and check-out times.";
+    if($("#in1").value===$("#out1").value)return"Check-in and check-out times must be different.";
+  }
+  if(t==="2"){
+    if(!$("#miss").value)return"Select which punch is missing.";
+    if(!$("#time2").value)return"Enter the missing punch time.";
+  }
+  if(t==="3"&&!$("#in3").value)return"Enter the corrected check-in time.";
+  if(!$("#by").value.trim())return"Enter who is requesting.";
+  
+  const r=RULES[t];
+  if(files.length<r.min||files.length>r.max)return r.text;
+  
+  if(!$("#reason").value.trim())return"Enter the reason for the adjustment.";
+  return"";
+}
+
+function headers(){
+  const h={"Content-Type":"application/json"};
+  const k=$("#token").value.trim();
+  if(k)h.Authorization="Bearer "+k;
+  return h;
+}
+
+function base(){return $("#api").value.trim().replace(/\/+$/,"")}
+
+$("#health").onclick=async()=>{
+  const o=$("#hout");o.textContent="Testing\u2026";
+  try{
+    const r=await fetch(base()+"/health",{headers:headers()});
+    const j=await r.json();
+    o.textContent=r.ok?"Connected. Gemini "+(j.gemini_api_loaded?"ready":"missing")+", Sightengine "+(j.sightengine_keys_loaded?"ready":"missing")+", C2PA "+(j.c2pa_loaded?"ready":"missing")+".":"The server answered with status "+r.status+".";
+  }catch(e){
+    o.textContent="Could not reach the server. Check the address and CORS.";
+  }
+};
+
+$("#f").onsubmit=async e=>{
+  e.preventDefault();
+  const p=problem();
+  $("#msg").textContent=p;
+  if(p)return;
+  
+  try{localStorage.setItem("punch_api",$("#api").value)}catch(x){}
+  
+  const num=v=>v===""?null:Number(v);
+  const body={
+    images:files.map(f=>({image_base64:f.b64,file_name:f.name})),
+    adjustment_type:Number($("#type").value),
+    attendance_date:$("#date").value,
+    expected_times:times().filter(Boolean),
+    office_latitude:num($("#lat").value),
+    office_longitude:num($("#lng").value)
+  };
+  
+  const res=$("#res");
+  res.hidden=false;
+  res.replaceChildren(el("p",null,"Checking "+files.length+" photo"+(files.length>1?"s":"")+"\u2026 this can take a few seconds."));
+  $("#send").disabled=true;
+  
+  try{
+    const r=await fetch(base()+"/punch-verify",{method:"POST",headers:headers(),body:JSON.stringify(body)});
+    const txt=await r.text();
+    let j=null;
+    try{j=JSON.parse(txt)}catch(x){}
+    
+    if(!r.ok||!j||!j.status){
+      res.replaceChildren(fail("The server answered with status "+r.status+".",txt));
+    }else{
+      show(j);
+    }
+  }catch(x){
+    res.replaceChildren(fail("Could not reach the server.","Check the API address in Test setup and that the server allows requests from this page (CORS)."));
+  }
+  $("#send").disabled=false;
+  res.scrollIntoView({behavior:"smooth",block:"nearest"});
+};
+
+function fail(a,b){
+  const v=el("div","verdict s-rejected");
+  v.append(el("b",null,"Request failed"),el("p",null,a));
+  if(b)v.append(el("p",null,b.slice(0,300)));
+  return v;
+}
+
+function show(j){
+  const res=$("#res");
+  res.replaceChildren(el("h2",null,"Photo verification"));
+  const v=el("div","verdict s-"+j.status);
+  v.append(el("b",null,LABEL[j.status]||j.status),el("p",null,j.status==="real"?"The proof photos passed every check.":(j.error||"")));
+  res.append(v);
+  
+  (j.results||[]).forEach((r,i)=>{
+    const c=el("div","ph");
+    const h=el("header");
+    h.append(el("strong",null,r.file_name||"Photo "+(i+1)),el("span","tag s-"+r.status,LABEL[r.status]||r.status));
+    c.append(h);
+    
+    if(r.error)c.append(el("p",null,r.error));
+    
+    const dl=el("dl");
+    const add=(k,x)=>{if(x==null||x==="")return;dl.append(el("dt",null,k),el("dd",null,String(x)))};
+    add("Photo time",r.timestamp);
+    add("Matched time",r.matched_minute);
+    add("Address",r.location);
+    add("Distance from office",r.distance_metres==null?null:r.distance_metres.toFixed(1)+" m");
+    add("AI score",r.sightengine_score==null?null:r.sightengine_score.toFixed(2));
+    if(r.metadata_flags&&r.metadata_flags.length)add("Metadata flags",r.metadata_flags.join("; "));
+    
+    c.append(dl);
+    res.append(c);
+  });
+  
+  const dt=el("details");
+  dt.append(el("summary",null,"Raw response"),el("pre",null,JSON.stringify(j,null,2)));
+  res.append(dt);
+}
+</script>
+</body>
+</html>
