@@ -412,7 +412,7 @@ class PunchService:
                     + _display_date(attendance_date)
                     + "."
                 )
-            if adjustment_type != 0 and not time_ok:
+            if not time_ok:
                 wanted = ", ".join(expected) if expected else "the requested time"
                 reasons.append(
                     "The photo time "
