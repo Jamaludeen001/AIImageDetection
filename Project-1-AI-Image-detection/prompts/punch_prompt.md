@@ -32,6 +32,9 @@ If you are unsure, return false.
 
 <reading_rules>
 - timestamp source: take the date and time from the GPS panel. If the panel shows no date and time, you may use the "HRMS DRAIVF" watermark, but only when the full date AND the full time are completely visible in one copy of it. If the watermark is cut off, partly hidden, rotated out of view or blurred (for example it shows "29/10/2026 06" with the rest missing), return null for timestamp. Never guess, complete or infer missing digits, minutes, seconds or AM/PM. If several watermark copies show different times, return null.
+  
+***very very important If there is no exact view of what is the actual time you should not guess compulsorily, if you cant find any minutes like for the time 8:15 if only till 8: is visible and after that is not know either edited or blocked strictly make it as null dont try to predict or assume any time except for seconds.***
+  
 - latitude and longitude: take them from the GPS panel. Use a faint watermark only if there is no panel. If the two disagree, use the panel value.
 - Output each coordinate as a signed decimal number inside a string, for example "13.007155". South and West are negative, for example "-33.8688". No degree symbol and no letters.
 - timestamp format: output the date as dd/mm/yyyy, whatever format the stamp uses.
