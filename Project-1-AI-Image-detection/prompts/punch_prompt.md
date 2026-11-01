@@ -39,7 +39,7 @@ edit_confidence: a number from 0.0 to 1.0. It is how likely you think it is that
 - Keep it consistent with is_edited: when is_edited is true, edit_confidence is at least 0.5. When is_edited is false, it is at most 0.5.
 
 missing_confidence: a number from 0.0 to 1.0. It is how sure you are that a required field (timestamp, latitude or longitude) is truly absent from the photo, not just hard to read.
-- If timestamp, latitude and longitude are all present, return 0.0.
+- Return 0.0 only when timestamp, latitude and longitude are ALL present (not null). If any one of them is null, missing_confidence must be above 0.0 and must say how sure you are that the null field is truly absent, for example high when the panel is legible but has no coordinates line.
 - 0.85 to 1.0: you are sure the field cannot be recovered from this photo. This applies when:
   - the picture is sharp and there is clearly no GPS panel or stamp; or
   - the panel is fully legible and clearly does not contain the field; or
