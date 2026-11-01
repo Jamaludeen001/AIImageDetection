@@ -412,7 +412,7 @@ function fail(a,b){
 
 function show(j){
   const res=$("#res");
-  res.replaceChildren(el("h2",null,"Photo verification"));
+  res.replaceChildren(el("h2",null,"Image verification"));
   const v=el("div","verdict s-"+j.status);
   v.append(el("b",null,LABEL[j.status]||j.status),el("p",null,j.status==="real"?"The proof photos passed every check.":(j.error||"")));
   res.append(v);
