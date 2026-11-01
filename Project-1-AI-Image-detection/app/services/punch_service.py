@@ -76,6 +76,8 @@ def _blank(status, error=None):
         "sightengine_is_ai": None,
         "is_ai_generated": None,
         "is_edited": None,
+        "edit_confidence": None,
+        "missing_confidence": None,
         "latitude": None,
         "longitude": None,
         "timestamp": None,
@@ -391,6 +393,8 @@ class PunchService:
         result.update(c2pa_fields)
         result["is_ai_generated"] = raw_ai
         result["is_edited"] = raw_edited
+        result["edit_confidence"] = edit_conf
+        result["missing_confidence"] = missing_conf
         result["latitude"] = latitude
         result["longitude"] = longitude
         result["timestamp"] = timestamp
