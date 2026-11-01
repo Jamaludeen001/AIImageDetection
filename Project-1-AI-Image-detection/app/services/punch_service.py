@@ -33,6 +33,11 @@ EXIF_TEXT_TAGS = ("Software", "HostComputer", "ImageDescription", "Artist")
 # PNG text chunks that AI tools write their prompt into.
 GENERATOR_KEYS = ("parameters", "workflow", "prompt", "generator")
 
+# Reasons that are hard evidence against the photo (wrong date, time or place).
+HARD_REASON_PREFIXES = ("The photo date", "The photo time", "The photo is ")
+# A branch setup problem, not a problem with the photo.
+NO_OFFICE_REASON = "This branch has no office coordinates."
+
 
 def _xmp_strings(node):
     """All text inside a parsed XMP block, skipping the XMP toolkit tag.
@@ -101,6 +106,19 @@ def _as_bool(value):
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "yes")
     return bool(value)
+
+
+def _confidence(value):
+    """A confidence between 0 and 1, or None when it is missing or invalid."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= number <= 1:
+        return number
+    return None
 
 
 def _coordinate(value, limit=180):
@@ -327,10 +345,12 @@ class PunchService:
         office_longitude: float | None,
         adjustment_type: int,
     ) -> dict:
+        # STAGE A: metadata scan
         metadata = self._read_metadata(path)
         if metadata.get("error"):
             return _blank("pending", metadata["error"])
 
+        # STAGE B: C2PA
         c2pa = self.c2pa.inspect(path)
         c2pa_fields = {
             "c2pa_present": c2pa["present"] if self.c2pa.available else None,
@@ -354,39 +374,53 @@ class PunchService:
             result.update(c2pa_fields)
             return result
 
+        # STAGE C: Gemini extraction
         extracted = self.gemini.extract(path)
         if extracted.get("error"):
             return _blank("pending", extracted["error"])
 
-        is_ai = _as_bool(extracted.get("is_ai_generated"))
-        is_edited = _as_bool(extracted.get("is_edited"))
+        raw_ai = _as_bool(extracted.get("is_ai_generated"))
+        raw_edited = _as_bool(extracted.get("is_edited"))
+        edit_conf = _confidence(extracted.get("edit_confidence"))
+        missing_conf = _confidence(extracted.get("missing_confidence"))
         latitude = _text(extracted.get("latitude"))
         longitude = _text(extracted.get("longitude"))
         timestamp = _text(extracted.get("timestamp"))
+
         result = _blank("pending")
         result.update(c2pa_fields)
-        result["is_ai_generated"] = is_ai
-        result["is_edited"] = is_edited
+        result["is_ai_generated"] = raw_ai
+        result["is_edited"] = raw_edited
         result["latitude"] = latitude
         result["longitude"] = longitude
         result["timestamp"] = timestamp
         result["location"] = _text(extracted.get("location"))
         result["accuracy"] = _text(extracted.get("accuracy"))
 
-        if is_ai is None or is_edited is None:
-            result["error"] = "Gemini did not return an AI verdict."
-            return result
+        # A missing verdict no longer stops the photo. A missing AI verdict is
+        # covered by Sightengine. A missing edit verdict is remembered and sends
+        # the photo to a person at the end, because nothing else detects edits.
+        edit_unknown = raw_edited is None
+        is_ai = bool(raw_ai)
+        is_edited = bool(raw_edited)
 
-        # Gemini's AI and edited verdicts alone never reject a photo. They are
-        # kept here and settled below, after the date, time and distance rules,
-        # by Sightengine or by a person.
+        logger.info(
+            "gemini verdict: ai=%s edited=%s edit_confidence=%s missing_confidence=%s",
+            raw_ai,
+            raw_edited,
+            edit_conf,
+            missing_conf,
+        )
+
         gemini_flags = []
         if is_ai:
             gemini_flags.append("Gemini marked the photo as AI-generated.")
         if is_edited:
             gemini_flags.append("Gemini marked the photo as edited.")
 
+        # STAGE D: GPS, date, time and distance
         reasons = []
+        photo_minute = None
         lat_num = _coordinate(latitude, 90)
         lon_num = _coordinate(longitude, 180)
         photo_time = _parse_photo_time(timestamp) if timestamp else None
@@ -424,7 +458,7 @@ class PunchService:
 
         if lat_num is not None and lon_num is not None:
             if office_latitude is None or office_longitude is None:
-                reasons.append("This branch has no office coordinates.")
+                reasons.append(NO_OFFICE_REASON)
             else:
                 distance = _haversine_metres(office_latitude, office_longitude, lat_num, lon_num)
                 result["distance_metres"] = round(distance, 2)
@@ -437,24 +471,56 @@ class PunchService:
                         + " metres."
                     )
 
-        if reasons:
-            hard_fail = any(
-                item.startswith("The photo date")
-                or item.startswith("The photo time")
-                or item.startswith("The photo is ")
-                for item in reasons
-            )
-            if hard_fail or gemini_flags:
-                result["status"] = "rejected" if hard_fail else "pending"
-                result["error"] = " ".join(gemini_flags + reasons)
-                return result
+        hard_reasons = [item for item in reasons if item.startswith(HARD_REASON_PREFIXES)]
+        setup_reasons = [item for item in reasons if item == NO_OFFICE_REASON]
+        read_reasons = [
+            item for item in reasons
+            if item not in hard_reasons and item not in setup_reasons
+        ]
+        history = " ".join(gemini_flags + reasons)
 
-        if is_edited and not is_ai:
-            # Sightengine only detects AI-generated images, so it cannot confirm an edit.
-            result["status"] = "pending"
-            result["error"] = " ".join(gemini_flags) + " Manual review needed."
+        # Rejections first. The first one that applies wins.
+        # 1. Wrong date, time or distance.
+        if hard_reasons:
+            result["status"] = "rejected"
+            result["error"] = history
             return result
 
+        # 2. Gemini is confident the photo is edited.
+        if (
+            is_edited
+            and edit_conf is not None
+            and edit_conf >= settings.GEMINI_EDIT_REJECT_CONFIDENCE
+        ):
+            result["status"] = "rejected"
+            result["error"] = history
+            return result
+
+        # 3. GPS or clock missing, and Gemini is confident it is truly missing.
+        if (
+            read_reasons
+            and missing_conf is not None
+            and missing_conf >= settings.GEMINI_MISSING_REJECT_CONFIDENCE
+        ):
+            result["status"] = "rejected"
+            result["error"] = history
+            return result
+
+        # Pending next: a person decides.
+        # - GPS or clock missing with low confidence (probably misread)
+        # - the branch has no office coordinates (setup problem)
+        # - Gemini says edited with medium confidence or no confidence at all
+        #   (below the review level the edited verdict is ignored)
+        edit_needs_review = is_edited and (
+            edit_conf is None or edit_conf >= settings.GEMINI_EDIT_REVIEW_CONFIDENCE
+        )
+        if reasons or edit_needs_review:
+            result["status"] = "pending"
+            result["error"] = history + " Manual review needed."
+            return result
+
+        # STAGE F: Sightengine. Reached when there are no reasons and Gemini is
+        # not (confidently) saying edited. Gemini saying AI does not skip it.
         sight = self.sightengine.detect(path)
         if not sight.get("ok"):
             result["status"] = "pending"
@@ -472,8 +538,8 @@ class PunchService:
             return result
 
         result["sightengine_is_ai"] = False
-        if gemini_flags:
-            # Gemini and Sightengine disagree, so a person decides.
+        if is_ai:
+            # Gemini says AI but Sightengine disagrees, so a person decides.
             result["status"] = "pending"
             result["error"] = (
                 " ".join(gemini_flags)
@@ -485,12 +551,10 @@ class PunchService:
             )
             return result
 
-        result["sightengine_is_ai"] = False
-        
-        # NEW: If it passed Sightengine but had missing GPS/Time, send to pending.
-        if reasons:
+        if edit_unknown:
+            # Nothing else can detect an edit, so Gemini's missing verdict goes to a person.
             result["status"] = "pending"
-            result["error"] = " ".join(reasons)
+            result["error"] = "Gemini did not return an edit verdict. Manual review needed."
             return result
 
         result["status"] = "real"
