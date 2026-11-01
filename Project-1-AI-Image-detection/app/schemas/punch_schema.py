@@ -44,6 +44,12 @@ class PunchImageResult(BaseModel):
     sightengine_is_ai: Optional[bool] = None
     is_ai_generated: Optional[bool] = None
     is_edited: Optional[bool] = None
+    edit_confidence: Optional[float] = Field(
+        None, ge=0, le=1, description="Gemini: how likely the photo was edited, 0 to 1"
+    )
+    missing_confidence: Optional[float] = Field(
+        None, ge=0, le=1, description="Gemini: how sure it is that GPS or time is truly absent, 0 to 1"
+    )
     latitude: Optional[str] = None
     longitude: Optional[str] = None
     timestamp: Optional[str] = None
