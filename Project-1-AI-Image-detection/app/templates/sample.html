@@ -26,6 +26,9 @@ input,select,textarea{width:100%;font:inherit;color:var(--ink);background:#fff;b
 textarea{height:108px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid rgba(91,111,224,.45);outline-offset:0;border-color:var(--blue)}
 .calc{background:#e9ecef;color:#aab2bd;font-size:18px;font-weight:600;cursor:not-allowed}
+/* NEW: CSS for readonly inputs */
+input[readonly]{background:#f4f6fb;color:var(--lab);cursor:not-allowed}
+
 small{display:block;color:var(--mute);font-size:12.5px;margin-top:3px}
 small svg{width:10px;height:10px;vertical-align:-1px}
 .pick{display:flex;align-items:center;gap:8px;min-height:38px}
@@ -144,8 +147,8 @@ pre{max-height:240px;overflow:auto;font-size:12px;background:#f4f6fb;padding:10p
 </div>
 
 <div class="g2">
-  <div><label for="lat">Office latitude</label><input id="lat" type="number" step="any"></div>
-  <div><label for="lng">Office longitude</label><input id="lng" type="number" step="any"></div>
+  <div><label for="lat">Office latitude</label><input id="lat" type="number" step="any" readonly placeholder="Select an office"></div>
+  <div><label for="lng">Office longitude</label><input id="lng" type="number" step="any" readonly placeholder="Select an office"></div>
 </div>
 <div class="row"><button type="button" id="health">Test connection</button><small id="hout" style="margin:0" aria-live="polite"></small></div>
 </details>
@@ -213,7 +216,6 @@ $("#office-select").onchange = (e) => {
 };
 
 // Trigger load when page loads
-// Note: If the page loads before the user sets the API URL, it will use relative path
 loadOffices();
 // -----------------------------------------------
 
