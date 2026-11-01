@@ -132,7 +132,21 @@ pre{max-height:240px;overflow:auto;font-size:12px;background:#f4f6fb;padding:10p
 <summary>Test setup</summary>
 <label for="api">API Base URL (no trailing slash)</label><input id="api" type="url" value="">
 <label for="token">Access token (optional)</label><input id="token" type="password" autocomplete="off">
-<div class="g2"><div><label for="lat">Office latitude</label><input id="lat" type="number" step="any"></div><div><label for="lng">Office longitude</label><input id="lng" type="number" step="any"></div></div>
+
+<div class="g2" style="margin-top: 12px;">
+  <div>
+    <label for="office-select">Select Office Location</label>
+    <select id="office-select">
+      <option value="">-- Loading offices... --</option>
+    </select>
+    <small id="csv-status" style="color:var(--red);"></small>
+  </div>
+</div>
+
+<div class="g2">
+  <div><label for="lat">Office latitude</label><input id="lat" type="number" step="any"></div>
+  <div><label for="lng">Office longitude</label><input id="lng" type="number" step="any"></div>
+</div>
 <div class="row"><button type="button" id="health">Test connection</button><small id="hout" style="margin:0" aria-live="polite"></small></div>
 </details>
 </div>
@@ -153,6 +167,55 @@ const LABEL={real:"Verified",pending:"Needs review",rejected:"Rejected"};
 let files=[];
 const d=new Date();$("#date").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 try{const a=localStorage.getItem("punch_api");if(a)$("#api").value=a}catch(e){}
+
+// --- NEW CODE: Load Offices from Backend API ---
+async function loadOffices() {
+  const select = $("#office-select");
+  const status = $("#csv-status");
+  
+  try {
+    // Fetch from the new FastAPI endpoint
+    const res = await fetch(base() + "/api/offices", { headers: headers() });
+    
+    if (!res.ok) throw new Error("Could not load offices");
+    
+    const offices = await res.json();
+    
+    select.innerHTML = '<option value="">-- Select an office --</option>';
+    
+    offices.forEach(office => {
+      const opt = document.createElement("option");
+      // Store lat and lng in the option's value
+      opt.value = `${office.lat},${office.lng}`;
+      opt.textContent = office.name;
+      select.appendChild(opt);
+    });
+    
+    status.textContent = "";
+  } catch (err) {
+    console.error(err);
+    select.innerHTML = '<option value="">-- Error loading offices --</option>';
+    status.textContent = "Failed to load office locations from backend.";
+  }
+}
+
+// Event listener to populate lat and lng when dropdown changes
+$("#office-select").onchange = (e) => {
+  const val = e.target.value;
+  if (!val) {
+    $("#lat").value = "";
+    $("#lng").value = "";
+    return;
+  }
+  const [lat, lng] = val.split(",");
+  $("#lat").value = lat;
+  $("#lng").value = lng;
+};
+
+// Trigger load when page loads
+// Note: If the page loads before the user sets the API URL, it will use relative path
+loadOffices();
+// -----------------------------------------------
 
 function applyType(){
   const t=$("#type").value;
