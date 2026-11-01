@@ -24,11 +24,15 @@ def load_punch_prompt() -> str:
 PROMPT = load_punch_prompt()
 
 # Tells Gemini the exact shape of the answer, so it cannot return the wrong keys or types.
+# edit_confidence: how likely the photo was edited (0 to 1).
+# missing_confidence: how sure Gemini is that a required field is truly absent (0 to 1).
 RESPONSE_SCHEMA = {
     "type": "OBJECT",
     "properties": {
         "is_ai_generated": {"type": "BOOLEAN"},
         "is_edited": {"type": "BOOLEAN"},
+        "edit_confidence": {"type": "NUMBER"},
+        "missing_confidence": {"type": "NUMBER"},
         "latitude": {"type": "STRING", "nullable": True},
         "longitude": {"type": "STRING", "nullable": True},
         "timestamp": {"type": "STRING", "nullable": True},
@@ -38,6 +42,8 @@ RESPONSE_SCHEMA = {
     "required": [
         "is_ai_generated",
         "is_edited",
+        "edit_confidence",
+        "missing_confidence",
         "latitude",
         "longitude",
         "timestamp",
