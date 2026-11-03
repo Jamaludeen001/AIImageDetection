@@ -13,19 +13,14 @@ logger = logging.getLogger(__name__)
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 PROMPT_FILE = "punch_prompt.md"
 
-
 def load_punch_prompt() -> str:
     path = PROMPTS_DIR / PROMPT_FILE
     if not path.is_file():
         raise FileNotFoundError(f"Gemini prompt file is missing: {path}")
     return path.read_text(encoding="utf-8").strip()
 
-
 PROMPT = load_punch_prompt()
 
-# Tells Gemini the exact shape of the answer, so it cannot return the wrong keys or types.
-# edit_confidence: how likely the photo was edited (0 to 1).
-# missing_confidence: how sure Gemini is that a required field is truly absent (0 to 1).
 RESPONSE_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -40,21 +35,12 @@ RESPONSE_SCHEMA = {
         "accuracy": {"type": "STRING", "nullable": True},
     },
     "required": [
-        "is_ai_generated",
-        "is_edited",
-        "edit_confidence",
-        "missing_confidence",
-        "latitude",
-        "longitude",
-        "timestamp",
-        "location",
-        "accuracy",
+        "is_ai_generated", "is_edited", "edit_confidence", "missing_confidence",
+        "latitude", "longitude", "timestamp", "location", "accuracy",
     ],
 }
 
-
 def model_list() -> list:
-    """The main model first, then the fallbacks from settings, without repeats."""
     names = [settings.GEMINI_MODEL or "gemini-3.5-flash-lite"]
     names += [item.strip() for item in (settings.GEMINI_FALLBACK_MODELS or "").split(",")]
     seen = []
@@ -62,7 +48,6 @@ def model_list() -> list:
         if name and name not in seen:
             seen.append(name)
     return seen
-
 
 class GeminiRepository:
     def __init__(self):
@@ -75,11 +60,14 @@ class GeminiRepository:
         else:
             logger.warning("GEMINI_API_KEY is missing.")
 
+    def close(self):
+        """Gracefully close the Gemini client connection."""
+        if self.client and hasattr(self.client, "close"):
+            self.client.close()
+
     def _prepare_image(self, image_path: str, max_size: int | None = None) -> bytes:
-        """A JPEG copy for Gemini: turned upright, and shrunk only if it is larger than max_size."""
         limit = max_size or settings.GEMINI_MAX_IMAGE_SIZE
         with Image.open(image_path) as img:
-            # Phones often store a portrait photo sideways plus a "rotate me" note.
             img = ImageOps.exif_transpose(img)
             if img.mode != "RGB":
                 img = img.convert("RGB")
@@ -131,7 +119,6 @@ class GeminiRepository:
                         logger.warning("Model %s busy (attempt %s).", model, attempt + 1)
                         time.sleep(2)
                     elif use_schema and ("INVALID_ARGUMENT" in error_msg or "schema" in error_msg.lower()):
-                        # This model did not accept the response schema. Ask again without it.
                         logger.warning("Model %s rejected the response schema, retrying without it.", model)
                         use_schema = False
                     else:
