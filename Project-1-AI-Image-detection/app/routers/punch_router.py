@@ -1,47 +1,49 @@
 import csv
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse
 
-from app.controllers.punch_controller import PunchController
 from app.schemas.punch_schema import PunchVerifyRequest, PunchVerifyResponse, PunchVerifyUrlRequest
+from app.controllers.punch_controller import PunchController
 
 router = APIRouter()
 
+# Dependency Injection: Create a controller instance using the singleton service
+def get_punch_controller(request: Request) -> PunchController:
+    return PunchController(service=request.app.state.punch_service)
 
 @router.get("/health")
-def health():
-    return PunchController().health()
-
+def health(controller: PunchController = Depends(get_punch_controller)):
+    return controller.health()
 
 @router.get("/health/live")
 def health_live():
     return {"status": "healthy"}
 
-
 @router.post("/punch-verify", response_model=PunchVerifyResponse)
-def punch_verify(body: PunchVerifyRequest):
-    return PunchController().verify(body)
-
+def punch_verify(
+    body: PunchVerifyRequest, 
+    controller: PunchController = Depends(get_punch_controller)
+):
+    return controller.verify(body)
 
 @router.post("/punch-verify-urls", response_model=PunchVerifyResponse)
-def punch_verify_urls(body: PunchVerifyUrlRequest):
-    return PunchController().verify_urls(body)
+def punch_verify_urls(
+    body: PunchVerifyUrlRequest,
+    controller: PunchController = Depends(get_punch_controller)
+):
+    return controller.verify_urls(body)
 
-
-# --- NEW ROUTE: Serve Offices CSV ---
 @router.get("/api/offices")
 def get_offices():
     offices = []
-    # Path relative to where the app is run (assuming uvicorn is run from root)
-    # Adjust the path if your working directory is different.
+    # Adjust path if your uvicorn is run from a different root
     csv_path = os.path.join("data", "offices.csv") 
     
     try:
         with open(csv_path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Ensure your CSV headers match exactly: "Office Name", "Latitude", "Longitude"
                 offices.append({
                     "name": row.get("Office Name", "").strip(),
                     "lat": row.get("Latitude", "").strip(),
@@ -52,4 +54,3 @@ def get_offices():
         raise HTTPException(status_code=404, detail="offices.csv not found in data folder")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-# ------------------------------------
