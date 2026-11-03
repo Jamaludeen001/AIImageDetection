@@ -53,7 +53,7 @@ class SightengineRepository:
 
         for key_index in keys_to_try:
             api_user, api_secret = self.keys[key_index]
-            data = {"models": "genai,deepfake", "api_user": api_user, "api_secret": api_secret}
+            data = {"models": "genai", "api_user": api_user, "api_secret": api_secret}
             try:
                 with open(image_path, "rb") as handle:
                     response = requests.post(
