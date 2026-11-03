@@ -2,8 +2,8 @@ from app.schemas.punch_schema import PunchVerifyRequest, PunchVerifyUrlRequest
 from app.services.punch_service import PunchService
 
 class PunchController:
-    def __init__(self):
-        self.service = PunchService()
+    def __init__(self, service: PunchService):
+        self.service = service
 
     def health(self):
         return self.service.health()
@@ -11,7 +11,7 @@ class PunchController:
     def verify(self, body: PunchVerifyRequest):
         return self.service.verify(
             images=body.images,
-            pdfs=body.pdfs,  # <-- Pass PDFs
+            pdfs=body.pdfs,
             adjustment_type=body.adjustment_type,
             attendance_date=body.attendance_date,
             expected_times=body.expected_times,
@@ -22,7 +22,7 @@ class PunchController:
     def verify_urls(self, body: PunchVerifyUrlRequest):
         return self.service.verify(
             images=body.images,
-            pdfs=[],  # URL endpoint doesn't take PDFs
+            pdfs=[],
             adjustment_type=body.adjustment_type,
             attendance_date=body.attendance_date,
             expected_times=body.expected_times,
