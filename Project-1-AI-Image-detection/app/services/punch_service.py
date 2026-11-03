@@ -286,7 +286,7 @@ class PunchService:
             self.images.delete(path)
 
     def _count_error(self, adjustment_type: int, count: int) -> str | None:
-        if adjustment_type == 0 and count < 1:
+        if adjustment_type == 0 and count !=1:
             return "A proof image is required for a regular adjustment."
         if adjustment_type == 1 and count != 2:
             return "A static on-site request needs exactly two photos: one check-in and one check-out."
