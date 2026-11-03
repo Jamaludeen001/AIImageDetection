@@ -14,8 +14,6 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Editor and AI tool names. They are matched as whole words only, so "Hover" or
-# "Discovered" never match a short name.
 SIGNATURES = [
     "adobe", "photoshop", "lightroom", "gimp", "affinity", "pixelmator",
     "corel", "paint.net", "capture one", "luminar", "photopea",
@@ -28,23 +26,14 @@ SIGNATURES = [
 _SIGNATURE_RE = re.compile(
     r"(?<![a-z0-9])(?:" + "|".join(re.escape(sig) for sig in SIGNATURES) + r")(?![a-z0-9])"
 )
-# The only EXIF tags that name the software or the description of a photo.
 EXIF_TEXT_TAGS = ("Software", "HostComputer", "ImageDescription", "Artist")
-# PNG text chunks that AI tools write their prompt into.
 GENERATOR_KEYS = ("parameters", "workflow", "prompt", "generator")
 
-# Reasons that are hard evidence against the photo (wrong date, time or place).
 HARD_REASON_PREFIXES = ("The photo date", "The photo time", "The photo is ")
-# A branch setup problem, not a problem with the photo.
 NO_OFFICE_REASON = "This branch has no office coordinates."
 
 
 def _xmp_strings(node):
-    """All text inside a parsed XMP block, skipping the XMP toolkit tag.
-
-    Many ordinary phone photos carry xmptk="Adobe XMP Core 5.x". That names the
-    XMP library, not an editor, so it is not evidence of editing.
-    """
     if isinstance(node, dict):
         for key, value in node.items():
             if str(key).lower() == "xmptk":
@@ -59,7 +48,6 @@ def _xmp_strings(node):
 
 
 def _signature_in(text):
-    """The editor or AI tool name found in text, or None."""
     match = _SIGNATURE_RE.search(str(text).lower())
     return match.group(0) if match else None
 
@@ -111,7 +99,6 @@ def _as_bool(value):
 
 
 def _confidence(value):
-    """A confidence between 0 and 1, or None when it is missing or invalid."""
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -124,12 +111,6 @@ def _confidence(value):
 
 
 def _coordinate(value, limit=180):
-    """A signed decimal degree from text.
-
-    Accepts "13.0071", "-33.8688", "33.8688 S", "80.2 W" and degrees/minutes/seconds.
-    South and West are negative. A value outside +-limit (90 for latitude,
-    180 for longitude) is not a coordinate and gives None.
-    """
     if value is None:
         return None
     text = str(value).strip().upper()
@@ -153,7 +134,6 @@ PHOTO_TIME_FORMATS = (
     "%d/%m/%Y %H:%M:%S",
     "%d/%m/%Y %I:%M %p",
     "%d/%m/%Y %H:%M",
-    # A month name is normally converted by Gemini, but read it if it slips through.
     "%d %b %Y %I:%M:%S %p",
     "%d %b %Y %H:%M:%S",
     "%d %b %Y %I:%M %p",
@@ -226,17 +206,32 @@ class PunchService:
         office_longitude: float | None = None,
     ) -> dict:
         expected = expected_times or []
+        
+        # 1. Check for PDF/invalid formats FIRST
+        for item in images:
+            file_name = (item.get("file_name") or "").lower()
+            if not file_name.endswith((".jpg", ".jpeg", ".png")):
+                error_msg = "Manual review needed: uploaded files contains the pdf."
+                pending_results = []
+                for index, img in enumerate(images):
+                    one = _blank("pending", error_msg)
+                    one["file_name"] = img.get("file_name") or ("Photo " + str(index + 1))
+                    pending_results.append(one)
+                return {"status": "pending", "error": error_msg, "results": pending_results}
+
+        # 2. Check for INVALID count/type
         count_error = self._count_error(adjustment_type, len(images))
         if count_error:
-            rejected = []
+            invalid_results = []
             for index, item in enumerate(images):
-                one = _blank("rejected", count_error)
+                one = _blank("invalid", count_error)
                 one["file_name"] = item.get("file_name") or ("Photo " + str(index + 1))
-                rejected.append(one)
-            if not rejected:
-                rejected.append(_blank("rejected", count_error))
-            return {"status": "rejected", "error": count_error, "results": rejected}
+                invalid_results.append(one)
+            if not invalid_results:
+                invalid_results.append(_blank("invalid", count_error))
+            return {"status": "invalid", "error": count_error, "results": invalid_results}
 
+        # 3. Process each image normally
         results = []
         for index, item in enumerate(images):
             if item.get("preload_error"):
@@ -262,6 +257,7 @@ class PunchService:
                 label = item.get("file_name") or ("Photo " + str(index + 1))
                 one["error"] = str(label) + ": " + one["error"]
             results.append(one)
+            
         combined = self._combine(results, expected, adjustment_type)
         logger.info("request type=%s result=%s", adjustment_type, combined["status"])
         return combined
@@ -311,7 +307,11 @@ class PunchService:
 
     def _combine(self, results: list, expected_times: list, adjustment_type: int) -> dict:
         errors = [item["error"] for item in results if item.get("error")]
-        if any(item["status"] == "rejected" for item in results):
+        
+        # Check "invalid" first, then "rejected", then "pending"
+        if any(item["status"] == "invalid" for item in results):
+            status = "invalid"
+        elif any(item["status"] == "rejected" for item in results):
             status = "rejected"
         elif any(item["status"] != "real" for item in results):
             status = "pending"
@@ -332,6 +332,7 @@ class PunchService:
                         + ", ".join(missing)
                         + "."
                     )
+                    
         return {
             "status": status,
             "error": " ".join(errors) if errors else None,
@@ -347,12 +348,10 @@ class PunchService:
         office_longitude: float | None,
         adjustment_type: int,
     ) -> dict:
-        # STAGE A: metadata scan
         metadata = self._read_metadata(path)
         if metadata.get("error"):
             return _blank("pending", metadata["error"])
 
-        # STAGE B: C2PA
         c2pa = self.c2pa.inspect(path)
         c2pa_fields = {
             "c2pa_present": c2pa["present"] if self.c2pa.available else None,
@@ -376,7 +375,6 @@ class PunchService:
             result.update(c2pa_fields)
             return result
 
-        # STAGE C: Gemini extraction
         extracted = self.gemini.extract(path)
         if extracted.get("error"):
             return _blank("pending", extracted["error"])
@@ -401,9 +399,6 @@ class PunchService:
         result["location"] = _text(extracted.get("location"))
         result["accuracy"] = _text(extracted.get("accuracy"))
 
-        # A missing verdict no longer stops the photo. A missing AI verdict is
-        # covered by Sightengine. A missing edit verdict is remembered and sends
-        # the photo to a person at the end, because nothing else detects edits.
         edit_unknown = raw_edited is None
         is_ai = bool(raw_ai)
         is_edited = bool(raw_edited)
@@ -422,7 +417,6 @@ class PunchService:
         if is_edited:
             gemini_flags.append("Gemini marked the photo as edited.")
 
-        # STAGE D: GPS, date, time and distance
         reasons = []
         photo_minute = None
         lat_num = _coordinate(latitude, 90)
@@ -483,14 +477,11 @@ class PunchService:
         ]
         history = " ".join(gemini_flags + reasons)
 
-        # Rejections first. The first one that applies wins.
-        # 1. Wrong date, time or distance.
         if hard_reasons:
             result["status"] = "rejected"
             result["error"] = history
             return result
 
-        # 2. Gemini is confident the photo is edited.
         if (
             is_edited
             and edit_conf is not None
@@ -500,7 +491,6 @@ class PunchService:
             result["error"] = history
             return result
 
-        # 3. GPS or clock missing, and Gemini is confident it is truly missing.
         if (
             read_reasons
             and missing_conf is not None
@@ -510,11 +500,6 @@ class PunchService:
             result["error"] = history
             return result
 
-        # Pending next: a person decides.
-        # - GPS or clock missing with low confidence (probably misread)
-        # - the branch has no office coordinates (setup problem)
-        # - Gemini says edited with medium confidence or no confidence at all
-        #   (below the review level the edited verdict is ignored)
         edit_needs_review = is_edited and (
             edit_conf is None or edit_conf >= settings.GEMINI_EDIT_REVIEW_CONFIDENCE
         )
@@ -523,8 +508,6 @@ class PunchService:
             result["error"] = history + " Manual review needed."
             return result
 
-        # STAGE F: Sightengine. Reached when there are no reasons and Gemini is
-        # not (confidently) saying edited. Gemini saying AI does not skip it.
         sight = self.sightengine.detect(path)
         if not sight.get("ok"):
             result["status"] = "pending"
@@ -543,7 +526,6 @@ class PunchService:
 
         result["sightengine_is_ai"] = False
         if is_ai:
-            # Gemini says AI but Sightengine disagrees, so a person decides.
             result["status"] = "pending"
             result["error"] = (
                 " ".join(gemini_flags)
@@ -556,7 +538,6 @@ class PunchService:
             return result
 
         if edit_unknown:
-            # Nothing else can detect an edit, so Gemini's missing verdict goes to a person.
             result["status"] = "pending"
             result["error"] = "Gemini did not return an edit verdict. Manual review needed."
             return result
@@ -581,9 +562,6 @@ class PunchService:
                     if key_text in GENERATOR_KEYS:
                         flags.append(f"Metadata hit in image info chunk [{key}]")
                         continue
-                    # Raw binary blocks (the EXIF blob, the colour profile) are read
-                    # through their own checks, not as text. Only a text value or a
-                    # JPEG comment is searched here.
                     if isinstance(value, (bytes, bytearray)):
                         if key_text != "comment":
                             continue
