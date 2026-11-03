@@ -31,6 +31,10 @@ GENERATOR_KEYS = ("parameters", "workflow", "prompt", "generator")
 HARD_REASON_PREFIXES = ("The photo date", "The photo time", "The photo is ")
 NO_OFFICE_REASON = "This branch has no office coordinates."
 
+# Only two statuses are ever returned, per photo and for the request as a whole.
+APPROVED = "approved"
+REJECTED = "rejected"
+
 
 def _xmp_strings(node):
     if isinstance(node, dict):
@@ -188,57 +192,38 @@ class PunchService:
     ) -> dict:
         expected = expected_times or []
         pdfs = pdfs or []
-        
-        # 1. Check for PDFs FIRST
-        if len(pdfs) > 0:
-            error_msg = "Manual review needed: uploaded files contains the pdf."
-            pending_results = []
-            
-            # Add PDFs to results
-            for pdf in pdfs:
-                one = _blank("pending", error_msg)
-                # Safe attribute access for Pydantic models
-                one["file_name"] = getattr(pdf, "file_name", None) or "Document.pdf"
-                pending_results.append(one)
-                
-            # Add any images to results so user sees everything
-            for img in images:
-                one = _blank("pending", error_msg)
-                one["file_name"] = getattr(img, "file_name", None) or "Photo.jpg"
-                pending_results.append(one)
-                
-            return {"status": "pending", "error": error_msg, "results": pending_results}
 
-        # 2. Check for INVALID count/type
-        count_error = self._count_error(adjustment_type, len(images))
-        if count_error:
-            invalid_results = []
-            for index, item in enumerate(images):
-                one = _blank("invalid", count_error)
-                one["file_name"] = getattr(item, "file_name", None) or ("Photo " + str(index + 1))
-                invalid_results.append(one)
-            if not invalid_results:
-                invalid_results.append(_blank("invalid", count_error))
-            return {"status": "invalid", "error": count_error, "results": invalid_results}
+        if adjustment_type not in (0, 1, 2, 3):
+            return {
+                "status": REJECTED,
+                "error": "The adjustment type is not recognized.",
+                "results": [],
+            }
 
-        # 3. Process each image normally
+        # PDFs are ignored: only uploaded images are verified.
+        if not images:
+            if pdfs:
+                # PDF-only upload: nothing to verify, so it is approved.
+                return {"status": APPROVED, "error": None, "results": []}
+            return {"status": REJECTED, "error": "No photo was uploaded.", "results": []}
+
+        # Every image goes through the full verification flow on its own.
         results = []
         for index, item in enumerate(images):
-            # Use dot notation for Pydantic attributes
             if getattr(item, "preload_error", None):
-                one = _blank("pending", item.preload_error)
+                one = _blank(REJECTED, item.preload_error)
             else:
                 one = self._verify_base64(
-                    item.image_base64, 
+                    item.image_base64,
                     attendance_date,
                     expected,
                     office_latitude,
                     office_longitude,
                     adjustment_type,
                 )
-            
+
             one["file_name"] = getattr(item, "file_name", None)
-            
+
             logger.info(
                 "photo %s of %s: status=%s error=%s",
                 index + 1,
@@ -250,7 +235,7 @@ class PunchService:
                 label = getattr(item, "file_name", None) or ("Photo " + str(index + 1))
                 one["error"] = str(label) + ": " + one["error"]
             results.append(one)
-            
+
         combined = self._combine(results, expected, adjustment_type)
         logger.info("request type=%s result=%s", adjustment_type, combined["status"])
         return combined
@@ -265,13 +250,13 @@ class PunchService:
         adjustment_type: int,
     ) -> dict:
         if not image_base64:
-            return _blank("pending", "The image could not be read.")
+            return _blank(REJECTED, "The image could not be read.")
         path = None
         try:
             path = self.images.save_temp(image_base64)
         except Exception as exc:
             logger.error("Could not store the uploaded image: %s", exc)
-            return _blank("pending", "The image could not be read.")
+            return _blank(REJECTED, "The image could not be read.")
 
         try:
             return self._verify_file(
@@ -285,51 +270,43 @@ class PunchService:
         finally:
             self.images.delete(path)
 
-    def _count_error(self, adjustment_type: int, count: int) -> str | None:
-        if adjustment_type == 0 and count != 1:
-            return "A regular adjustment needs exactly one photo."
-        if adjustment_type == 1 and count != 2:
-            return "A static on-site request needs exactly two photos: one check-in and one check-out."
-        if adjustment_type == 2 and count != 1:
-            return "A semi punch request needs exactly one photo for the missing check-in or check-out."
-        if adjustment_type == 3 and count != 1:
-            return "A check-in correction needs exactly one check-in photo."
-        if adjustment_type not in (0, 1, 2, 3):
-            return "The adjustment type is not recognized."
-        return None
-
     def _combine(self, results: list, expected_times: list, adjustment_type: int) -> dict:
-        errors = [item["error"] for item in results if item.get("error")]
-        
-        if any(item["status"] == "invalid" for item in results):
-            status = "invalid"
-        elif any(item["status"] == "rejected" for item in results):
-            status = "rejected"
-        elif any(item["status"] != "real" for item in results):
-            status = "pending"
-        else:
-            status = "real"
-            seen = []
-            for item in expected_times:
-                minute = _minute(item)
-                if minute and minute not in seen:
-                    seen.append(minute)
-            if adjustment_type == 1 and len(results) == 2 and len(seen) > 1:
-                matched = [item.get("matched_minute") for item in results if item.get("matched_minute")]
-                missing = [minute for minute in seen if minute not in matched]
-                if missing:
-                    status = "rejected"
-                    errors.append(
+        # Any rejected photo makes the whole request rejected.
+        errors = [
+            item["error"] for item in results
+            if item["status"] == REJECTED and item.get("error")
+        ]
+        if any(item["status"] == REJECTED for item in results):
+            return {"status": REJECTED, "error": " ".join(errors) if errors else None, "results": results}
+
+        # All photos approved. Static on-site still needs both check-in and
+        # check-out times to appear across the photos, but only when every
+        # photo was fully read and matched a time.
+        seen = []
+        for item in expected_times:
+            minute = _minute(item)
+            if minute and minute not in seen:
+                seen.append(minute)
+        if (
+            adjustment_type == 1
+            and len(results) >= 2
+            and len(seen) > 1
+            and all(item.get("matched_minute") for item in results)
+        ):
+            matched = [item["matched_minute"] for item in results]
+            missing = [minute for minute in seen if minute not in matched]
+            if missing:
+                return {
+                    "status": REJECTED,
+                    "error": (
                         "Both the check-in time and the check-out time must appear on the photos. Missing "
                         + ", ".join(missing)
                         + "."
-                    )
-                    
-        return {
-            "status": status,
-            "error": " ".join(errors) if errors else None,
-            "results": results,
-        }
+                    ),
+                    "results": results,
+                }
+
+        return {"status": APPROVED, "error": None, "results": results}
 
     def _verify_file(
         self,
@@ -342,7 +319,7 @@ class PunchService:
     ) -> dict:
         metadata = self._read_metadata(path)
         if metadata.get("error"):
-            return _blank("pending", metadata["error"])
+            return _blank(REJECTED, metadata["error"])
 
         c2pa = self.c2pa.inspect(path)
         c2pa_fields = {
@@ -356,20 +333,22 @@ class PunchService:
                 message = "The photo credentials show it is AI-generated: " + "; ".join(flags)
             else:
                 message = "The photo metadata shows it was edited: " + "; ".join(flags)
-            result = _blank("rejected", message)
+            result = _blank(REJECTED, message)
             result["metadata_edited"] = True
             result["metadata_flags"] = flags
             result.update(c2pa_fields)
             return result
         if c2pa["flags"]:
-            result = _blank("pending", "; ".join(c2pa["flags"]) + ". Manual review needed.")
+            # C2PA flags only — treat as approved but keep the notes
+            result = _blank(APPROVED, "; ".join(c2pa["flags"]) + ".")
             result["metadata_flags"] = c2pa["flags"]
             result.update(c2pa_fields)
             return result
 
         extracted = self.gemini.extract(path)
         if extracted.get("error"):
-            return _blank("pending", extracted["error"])
+            # AI service failed — cannot verify the image
+            return _blank(REJECTED, extracted["error"])
 
         raw_ai = _as_bool(extracted.get("is_ai_generated"))
         raw_edited = _as_bool(extracted.get("is_edited"))
@@ -379,7 +358,7 @@ class PunchService:
         longitude = _text(extracted.get("longitude"))
         timestamp = _text(extracted.get("timestamp"))
 
-        result = _blank("pending")
+        result = _blank(APPROVED)
         result.update(c2pa_fields)
         result["is_ai_generated"] = raw_ai
         result["is_edited"] = raw_edited
@@ -470,7 +449,7 @@ class PunchService:
         history = " ".join(gemini_flags + reasons)
 
         if hard_reasons:
-            result["status"] = "rejected"
+            result["status"] = REJECTED
             result["error"] = history
             return result
 
@@ -479,7 +458,7 @@ class PunchService:
             and edit_conf is not None
             and edit_conf >= settings.GEMINI_EDIT_REJECT_CONFIDENCE
         ):
-            result["status"] = "rejected"
+            result["status"] = REJECTED
             result["error"] = history
             return result
 
@@ -488,7 +467,7 @@ class PunchService:
             and missing_conf is not None
             and missing_conf >= settings.GEMINI_MISSING_REJECT_CONFIDENCE
         ):
-            result["status"] = "rejected"
+            result["status"] = REJECTED
             result["error"] = history
             return result
 
@@ -496,13 +475,14 @@ class PunchService:
             edit_conf is None or edit_conf >= settings.GEMINI_EDIT_REVIEW_CONFIDENCE
         )
         if reasons or edit_needs_review:
-            result["status"] = "pending"
-            result["error"] = history + " Manual review needed."
+            result["status"] = APPROVED
+            result["error"] = history
             return result
 
         sight = self.sightengine.detect(path)
         if not sight.get("ok"):
-            result["status"] = "pending"
+            # Sightengine failed — cannot verify the image
+            result["status"] = REJECTED
             message = sight.get("error") or "Sightengine request failed."
             result["error"] = " ".join(gemini_flags + [message])
             return result
@@ -511,30 +491,32 @@ class PunchService:
         threshold = settings.SIGHTENGINE_AI_THRESHOLD
         result["sightengine_score"] = score
         if score >= threshold:
-            result["status"] = "rejected"
+            result["status"] = REJECTED
             result["sightengine_is_ai"] = True
             result["error"] = "Sightengine marked the photo as AI-generated."
             return result
 
         result["sightengine_is_ai"] = False
         if is_ai:
-            result["status"] = "pending"
+            # Gemini says AI but Sightengine disagrees. Per the new rule, only hard rules or Sightengine reject. 
+            # We keep it approved but note the conflict.
+            result["status"] = APPROVED
             result["error"] = (
                 " ".join(gemini_flags)
                 + " Sightengine score "
                 + format(score, ".2f")
                 + " is below "
                 + format(threshold, ".2f")
-                + ". Manual review needed."
+                + "."
             )
             return result
 
         if edit_unknown:
-            result["status"] = "pending"
-            result["error"] = "Gemini did not return an edit verdict. Manual review needed."
+            result["status"] = APPROVED
+            result["error"] = "Gemini did not return an edit verdict."
             return result
 
-        result["status"] = "real"
+        result["status"] = APPROVED
         result["matched_minute"] = photo_minute if result.get("time_match") else None
         result["error"] = None
         return result
