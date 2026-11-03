@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Submit Punching Request</title>
 <style>
-:root{color-scheme:light;--blue:#5b6fe0;--ink:#2c3340;--lab:#5a6472;--mute:#8a94a3;--line:#dde2e8;--red:#e03e3e;--ok:#1f6b2f;--ok-bg:#e4f3e6;--warn:#7a4a06;--warn-bg:#fbefd5;--bad:#8c2222;--bad-bg:#fbe6e6}
+:root{color-scheme:light;--blue:#5b6fe0;--ink:#2c3340;--lab:#5a6472;--mute:#8a94a3;--line:#dde2e8;--red:#e03e3e;--ok:#1f6b2f;--ok-bg:#e4f3e6;--warn:#7a4a06;--warn-bg:#fbefd5;--bad:#8c2222;--bad-bg:#fbe6e6;--inv:#856404;--inv-bg:#fff3cd;--inv-border:#ffeeba}
 *{box-sizing:border-box}
 body{margin:0;background:#f4f6fb;color:var(--ink);font:15px/1.5 "Source Sans 3","Source Sans Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .page{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
@@ -26,9 +26,7 @@ input,select,textarea{width:100%;font:inherit;color:var(--ink);background:#fff;b
 textarea{height:108px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid rgba(91,111,224,.45);outline-offset:0;border-color:var(--blue)}
 .calc{background:#e9ecef;color:#aab2bd;font-size:18px;font-weight:600;cursor:not-allowed}
-/* NEW: CSS for readonly inputs */
 input[readonly]{background:#f4f6fb;color:var(--lab);cursor:not-allowed}
-
 small{display:block;color:var(--mute);font-size:12.5px;margin-top:3px}
 small svg{width:10px;height:10px;vertical-align:-1px}
 .pick{display:flex;align-items:center;gap:8px;min-height:38px}
@@ -53,6 +51,7 @@ h2{font-size:17px;font-weight:600;margin:0 0 12px}
 .s-real{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
 .s-pending{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
 .s-rejected{background:var(--bad-bg);color:var(--bad);border-color:var(--bad)}
+.s-invalid{background:var(--inv-bg);color:var(--inv);border-color:var(--inv-border)}
 .ph{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-top:12px}
 .ph header{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px}
 .ph header strong{overflow-wrap:anywhere}
@@ -166,34 +165,33 @@ const RULES={
   3:{min:1,max:1,text:"Check-in correction needs exactly one check-in photo.",hint:"At most 1 file"}
 };
 
-const LABEL={real:"Verified",pending:"Needs review",rejected:"Rejected"};
+const LABEL={
+  real:"Verified",
+  pending:"Needs review",
+  rejected:"Rejected",
+  invalid:"Invalid Request"
+};
+
 let files=[];
 const d=new Date();$("#date").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 try{const a=localStorage.getItem("punch_api");if(a)$("#api").value=a}catch(e){}
 
-// --- NEW CODE: Load Offices from Backend API ---
 async function loadOffices() {
   const select = $("#office-select");
   const status = $("#csv-status");
   
   try {
-    // Fetch from the new FastAPI endpoint
     const res = await fetch(base() + "/api/offices", { headers: headers() });
-    
     if (!res.ok) throw new Error("Could not load offices");
-    
     const offices = await res.json();
     
     select.innerHTML = '<option value="">-- Select an office --</option>';
-    
     offices.forEach(office => {
       const opt = document.createElement("option");
-      // Store lat and lng in the option's value
       opt.value = `${office.lat},${office.lng}`;
       opt.textContent = office.name;
       select.appendChild(opt);
     });
-    
     status.textContent = "";
   } catch (err) {
     console.error(err);
@@ -202,7 +200,6 @@ async function loadOffices() {
   }
 }
 
-// Event listener to populate lat and lng when dropdown changes
 $("#office-select").onchange = (e) => {
   const val = e.target.value;
   if (!val) {
@@ -215,9 +212,7 @@ $("#office-select").onchange = (e) => {
   $("#lng").value = lng;
 };
 
-// Trigger load when page loads
 loadOffices();
-// -----------------------------------------------
 
 function applyType(){
   const t=$("#type").value;
@@ -414,9 +409,14 @@ function fail(a,b){
 
 function show(j){
   const res=$("#res");
-  res.replaceChildren(el("h2",null,"Image verification"));
+  res.replaceChildren(el("h2",null,"Photo verification"));
   const v=el("div","verdict s-"+j.status);
-  v.append(el("b",null,LABEL[j.status]||j.status),el("p",null,j.status==="real"?"The proof photos passed every check.":(j.error||"")));
+  
+  let msg = j.error || "";
+  if (j.status === "real") msg = "The proof photos passed every check.";
+  else if (j.status === "invalid") msg = j.error || "The number of photos uploaded is invalid for this adjustment type.";
+
+  v.append(el("b",null,LABEL[j.status]||j.status), el("p",null, msg));
   res.append(v);
   
   (j.results||[]).forEach((r,i)=>{
