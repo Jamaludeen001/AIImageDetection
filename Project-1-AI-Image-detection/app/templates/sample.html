@@ -73,4 +73,408 @@ pre{max-height:240px;overflow:auto;font-size:12px;background:#f4f6fb;padding:10p
 <div class="card">
 <div class="head">
 <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/></svg>Submit Punching Request</h1>
-<button type="button" class="pill" id="info"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1a11 11 0 100 22 11
+<button type="button" class="pill" id="info"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1a11 11 0 100 22 11 11 0 000-22zm1.2 5.2a1.4 1.4 0 11-2.4 0 1.4 1.4 0 012.4 0zM10.5 10h2.2v8h-2.2z"/></svg>Instructions</button>
+</div>
+<p class="note" id="note" hidden>Upload JPG or PNG photos taken with a GPS camera app that shows the date, time and location. The time on the photo must match the time you enter, and the photo must be taken at the office.</p>
+
+<form id="f" novalidate>
+<div class="g2">
+<div class="fld"><label for="date">Attendance Date <i>*</i></label><input type="date" id="date"><small>Select the date for adjustment</small></div>
+<div class="fld"><label for="type">Adjustment Type <i>*</i></label>
+<select id="type">
+<option value="0">Regular Adjustment (Add Minutes)</option>
+<option value="1">Static On-Site (Fixed 9:30-18:30)</option>
+<option value="2">Semi Punch (Same Check-in &amp; Check-out)</option>
+<option value="3">Check-In Time Correction (Wrong Check-In Recorded)</option>
+</select><small>Choose adjustment type</small></div>
+</div>
+
+<div class="g2" data-for="0">
+<div class="fld"><label for="out0">Actual Check-Out Time <i>*</i></label><input type="time" id="out0"><small>Enter the time you actually left the office</small></div>
+<div class="fld"><label>Adjustment Minutes <i>*</i></label><input class="calc" value="Auto-calculated" disabled aria-label="Adjustment minutes, calculated automatically"><small><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10V8a6 6 0 1112 0v2h1v12H5V10zm2 0h8V8a4 4 0 10-8 0z"/></svg> Auto-calculated from (Actual Check-Out − Existing Check-Out)</small></div>
+</div>
+
+<div class="g2" data-for="1" hidden>
+<div class="fld"><label for="in1">Check-In Time <i>*</i></label><input type="time" id="in1" value="09:30"><small>Default: 09:30 AM</small></div>
+<div class="fld"><label for="out1">Check-Out Time <i>*</i></label><input type="time" id="out1" value="18:30"><small>Default: 06:30 PM</small></div>
+</div>
+
+<div class="g2" data-for="2" hidden>
+<div class="fld"><label for="miss">Missing Punch Type <i>*</i></label>
+<select id="miss"><option value="">-- Select Missing Punch --</option><option>Check-in</option><option>Check-out</option></select><small>Choose which punch is missing</small></div>
+<div class="fld"><label for="time2">Missing Punch Time <i>*</i></label><input type="time" id="time2"><small>The time shown on the proof photo</small></div>
+</div>
+
+<div class="g2" data-for="3" hidden>
+<div class="fld"><label for="in3">Actual Check-In Time (Corrected) <i>*</i></label><input type="time" id="in3"><small>Enter the time you actually arrived at the office</small></div>
+<div class="fld"><label>Adjustment Minutes <i>*</i></label><input class="calc" value="Auto-calculated" disabled aria-label="Adjustment minutes, calculated automatically"><small><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10V8a6 6 0 1112 0v2h1v12H5V10zm2 0h8V8a4 4 0 10-8 0z"/></svg> Auto-calculated from (Wrong Check-In − Actual Check-In)</small></div>
+</div>
+
+<div class="g2">
+<div class="fld"><label for="by">Requested By <i>*</i></label><input id="by" value="Dr. Aravind MD"><small>Your name</small></div>
+<div class="fld"><label>Upload Proof <i>*</i></label>
+<div class="pick"><button type="button" id="choose">Choose files</button><span id="count">No file chosen</span></div>
+<input type="file" id="file" accept="image/jpeg,image/png,application/pdf" multiple hidden>
+<small><span class="must">Mandatory</span> - JPG, PNG, PDF (Max 10MB each). <span id="req-hint" style="font-weight:600;color:var(--blue);">Max 1 file</span></small>
+<div class="chips" id="chips"></div></div>
+</div>
+
+<div class="fld"><label for="reason">Adjustment Reason <i>*</i></label><textarea id="reason" maxlength="255" placeholder="Please provide detailed reason for adjustment request..."></textarea><small>Maximum 255 characters</small></div>
+
+<div class="bar">
+<p id="msg" role="alert"></p>
+<button type="button" class="reset" id="reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 00-14-4L4 9M4 4v5h5M4 13a8 8 0 0014 4l2-2M20 20v-5h-5"/></svg>Reset</button>
+<button type="submit" class="send" id="send"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 2L2 10.5l7 3 3 7zM9.5 13.5l8-7"/></svg>Submit Request</button>
+</div>
+</form>
+</div>
+
+<div class="card" id="res" hidden aria-live="polite"></div>
+
+<div class="card">
+<details>
+<summary>Test setup</summary>
+<label for="api">API Base URL (no trailing slash)</label><input id="api" type="url" value="">
+<label for="token">Access token (optional)</label><input id="token" type="password" autocomplete="off">
+
+<div class="g2" style="margin-top: 12px;">
+  <div>
+    <label for="office-select">Select Office Location</label>
+    <select id="office-select">
+      <option value="">-- Loading offices... --</option>
+    </select>
+    <small id="csv-status" style="color:var(--red);"></small>
+  </div>
+</div>
+
+<div class="g2">
+  <div><label for="lat">Office latitude</label><input id="lat" type="number" step="any" readonly placeholder="Select an office"></div>
+  <div><label for="lng">Office longitude</label><input id="lng" type="number" step="any" readonly placeholder="Select an office"></div>
+</div>
+<div class="row"><button type="button" id="health">Test connection</button><small id="hout" style="margin:0" aria-live="polite"></small></div>
+</details>
+</div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+
+const RULES={
+  0:{min:1,max:1,text:"Regular adjustment allows at most 1 file.",hint:"At most 1 file"},
+  1:{min:2,max:2,text:"Static on-site needs exactly two photos: one check-in and one check-out.",hint:"Requires exactly 2 files"},
+  2:{min:1,max:1,text:"Semi punch needs exactly one photo of the missing punch.",hint:"At most 1 file"},
+  3:{min:1,max:1,text:"Check-in correction needs exactly one check-in photo.",hint:"At most 1 file"}
+};
+
+const LABEL={
+  real:"Verified",
+  pending:"Needs review",
+  rejected:"Rejected",
+  invalid:"Invalid Request"
+};
+
+let files=[];
+const d=new Date();$("#date").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+try{const a=localStorage.getItem("punch_api");if(a)$("#api").value=a}catch(e){}
+
+async function loadOffices() {
+  const select = $("#office-select");
+  const status = $("#csv-status");
+  
+  try {
+    const res = await fetch(base() + "/api/offices", { headers: headers() });
+    if (!res.ok) throw new Error("Could not load offices");
+    const offices = await res.json();
+    
+    select.innerHTML = '<option value="">-- Select an office --</option>';
+    offices.forEach(office => {
+      const opt = document.createElement("option");
+      opt.value = `${office.lat},${office.lng}`;
+      opt.textContent = office.name;
+      select.appendChild(opt);
+    });
+    status.textContent = "";
+  } catch (err) {
+    console.error(err);
+    select.innerHTML = '<option value="">-- Error loading offices --</option>';
+    status.textContent = "Failed to load office locations from backend.";
+  }
+}
+
+$("#office-select").onchange = (e) => {
+  const val = e.target.value;
+  if (!val) {
+    $("#lat").value = "";
+    $("#lng").value = "";
+    return;
+  }
+  const [lat, lng] = val.split(",");
+  $("#lat").value = lat;
+  $("#lng").value = lng;
+};
+
+loadOffices();
+
+function applyType(){
+  const t=$("#type").value;
+  document.querySelectorAll("[data-for]").forEach(p=>p.hidden=p.dataset.for!==t);
+  
+  $("#req-hint").textContent = RULES[t].hint;
+
+  if (files.length > RULES[t].max) {
+    files = []; 
+    drawChips();
+    $("#msg").textContent = "Your previously selected files were cleared because this type allows at most " + RULES[t].max + " file(s). Please re-upload.";
+  }
+
+  const chooseBtn = $("#choose");
+  chooseBtn.disabled = (files.length >= RULES[t].max);
+}
+$("#type").onchange=()=>{applyType(); if(!files.length) $("#msg").textContent=""};applyType();
+$("#info").onclick=()=>{const n=$("#note");n.hidden=!n.hidden};
+
+function drawChips(){
+  const box=$("#chips");box.replaceChildren();
+  $("#count").textContent=files.length?files.length+" file"+(files.length>1?"s":"")+" selected":"No file chosen";
+  
+  const t = $("#type").value;
+  $("#choose").disabled = (files.length >= RULES[t].max);
+
+  files.forEach((f,i)=>{
+    const c=el("div","chip");
+    if (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+      const icon = el("div", "pdf-icon", "📄");
+      c.append(icon);
+    } else {
+      const im=el("img");im.src=f.url;im.alt="";
+      c.append(im);
+    }
+    
+    const x=el("button",null,"\u00d7");x.type="button";x.setAttribute("aria-label","Remove "+f.name);
+    x.onclick=()=>{
+      files.splice(i,1);
+      drawChips();
+      $("#msg").textContent=""; 
+    };
+    c.append(el("span",null,f.name),x);box.append(c);
+  });
+}
+
+function read(file){
+  return new Promise((ok,no)=>{
+    const r=new FileReader();
+    r.onload=()=>ok(String(r.result));
+    r.onerror=no;
+    r.readAsDataURL(file);
+  });
+}
+
+$("#choose").onclick=()=>$("#file").click();
+$("#file").onchange=async e=>{
+  const t = $("#type").value;
+  const maxFiles = RULES[t].max;
+  const bad=[];
+  
+  const validIncoming = Array.from(e.target.files).filter(f => {
+    const validTypes = ["image/jpeg", "image/png", "application/pdf"];
+    if (!validTypes.includes(f.type) || f.size > 10 * 1048576) {
+      bad.push(f.name);
+      return false;
+    }
+    return true;
+  });
+
+  if (validIncoming.length > maxFiles) {
+    e.target.value="";
+    $("#msg").textContent = `You selected ${validIncoming.length} files, but this adjustment type allows at most ${maxFiles}. Please select fewer files.`;
+    return; 
+  }
+
+  if (files.length + validIncoming.length > maxFiles) {
+    e.target.value="";
+    $("#msg").textContent = `You already have ${files.length} file(s) selected. You can only add up to ${maxFiles} in total.`;
+    return; 
+  }
+
+  let msgs = [];
+  if (bad.length) msgs.push("Skipped " + bad.join(", ") + " (Invalid format or >10MB).");
+
+  for(const f of validIncoming){
+    const url=await read(f);
+    files.push({name:f.name, url:url, b64:url.split(",")[1], type:f.type});
+  }
+
+  e.target.value=""; 
+  drawChips(); 
+
+  $("#msg").textContent = msgs.join(" ");
+};
+
+$("#reset").onclick=()=>{
+  $("#f").reset();
+  files=[];
+  drawChips();
+  applyType();
+  $("#msg").textContent="";
+  $("#res").hidden=true;
+};
+
+function times(){
+  const t=$("#type").value;
+  if(t==="0")return[$("#out0").value];
+  if(t==="1")return[$("#in1").value,$("#out1").value];
+  if(t==="2")return[$("#time2").value];
+  return[$("#in3").value];
+}
+
+function problem(){
+  const t=$("#type").value;
+  if(!$("#date").value)return"Choose the attendance date.";
+  if(t==="0"&&!$("#out0").value)return"Enter the actual check-out time.";
+  if(t==="1"){
+    if(!$("#in1").value||!$("#out1").value)return"Enter both the check-in and check-out times.";
+    if($("#in1").value===$("#out1").value)return"Check-in and check-out times must be different.";
+  }
+  if(t==="2"){
+    if(!$("#miss").value)return"Select which punch is missing.";
+    if(!$("#time2").value)return"Enter the missing punch time.";
+  }
+  if(t==="3"&&!$("#in3").value)return"Enter the corrected check-in time.";
+  if(!$("#by").value.trim())return"Enter who is requesting.";
+  
+  const r=RULES[t];
+  if(files.length<r.min||files.length>r.max)return r.text;
+  
+  if(!$("#reason").value.trim())return"Enter the reason for the adjustment.";
+  return"";
+}
+
+function headers(){
+  const h={"Content-Type":"application/json"};
+  const k=$("#token").value.trim();
+  if(k)h.Authorization="Bearer "+k;
+  return h;
+}
+
+function base(){return $("#api").value.trim().replace(/\/+$/,"")}
+
+$("#health").onclick=async()=>{
+  const o=$("#hout");o.textContent="Testing\u2026";
+  try{
+    const r=await fetch(base()+"/health",{headers:headers()});
+    const j=await r.json();
+    o.textContent=r.ok?"Connected. Gemini "+(j.gemini_api_loaded?"ready":"missing")+", Sightengine "+(j.sightengine_keys_loaded?"ready":"missing")+", C2PA "+(j.c2pa_loaded?"ready":"missing")+".":"The server answered with status "+r.status+".";
+  }catch(e){
+    o.textContent="Could not reach the server. Check the address and CORS.";
+  }
+};
+
+$("#f").onsubmit=async e=>{
+  e.preventDefault();
+  const p=problem();
+  $("#msg").textContent=p;
+  if(p)return;
+  
+  try{localStorage.setItem("punch_api",$("#api").value)}catch(x){}
+  
+  // --- NEW: Separate images and PDFs ---
+  const imagePayload = [];
+  const pdfPayload = [];
+
+  files.forEach(f => {
+    if (f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")) {
+      pdfPayload.push({
+        pdf_base64: f.b64,
+        file_name: f.name
+      });
+    } else {
+      imagePayload.push({
+        image_base64: f.b64,
+        file_name: f.name
+      });
+    }
+  });
+  // -------------------------------------
+
+  const num=v=>v===""?null:Number(v);
+  const body={
+    images: imagePayload,      
+    pdfs: pdfPayload,          
+    adjustment_type:Number($("#type").value),
+    attendance_date:$("#date").value,
+    expected_times:times().filter(Boolean),
+    office_latitude:num($("#lat").value),
+    office_longitude:num($("#lng").value)
+  };
+  
+  const res=$("#res");
+  res.hidden=false;
+  res.replaceChildren(el("p",null,"Checking "+files.length+" file"+(files.length>1?"s":"")+"\u2026 this can take a few seconds."));
+  $("#send").disabled=true;
+  
+  try{
+    const r=await fetch(base()+"/punch-verify",{method:"POST",headers:headers(),body:JSON.stringify(body)});
+    const txt=await r.text();
+    let j=null;
+    try{j=JSON.parse(txt)}catch(x){}
+    
+    if(!r.ok||!j||!j.status){
+      res.replaceChildren(fail("The server answered with status "+r.status+".",txt));
+    }else{
+      show(j);
+    }
+  }catch(x){
+    res.replaceChildren(fail("Could not reach the server.","Check the API address in Test setup and that the server allows requests from this page (CORS)."));
+  }
+  $("#send").disabled=false;
+  res.scrollIntoView({behavior:"smooth",block:"nearest"});
+};
+
+function fail(a,b){
+  const v=el("div","verdict s-rejected");
+  v.append(el("b",null,"Request failed"),el("p",null,a));
+  if(b)v.append(el("p",null,b.slice(0,300)));
+  return v;
+}
+
+function show(j){
+  const res=$("#res");
+  res.replaceChildren(el("h2",null,"Photo verification"));
+  const v=el("div","verdict s-"+j.status);
+  
+  let msg = j.error || "";
+  if (j.status === "real") msg = "The proof photos passed every check.";
+  else if (j.status === "invalid") msg = j.error || "The number of photos uploaded is invalid for this adjustment type.";
+
+  v.append(el("b",null,LABEL[j.status]||j.status), el("p",null, msg));
+  res.append(v);
+  
+  (j.results||[]).forEach((r,i)=>{
+    const c=el("div","ph");
+    const h=el("header");
+    h.append(el("strong",null,r.file_name||"Photo "+(i+1)),el("span","tag s-"+r.status,LABEL[r.status]||r.status));
+    c.append(h);
+    
+    if(r.error)c.append(el("p",null,r.error));
+    
+    const dl=el("dl");
+    const add=(k,x)=>{if(x==null||x==="")return;dl.append(el("dt",null,k),el("dd",null,String(x)))};
+    add("Photo time",r.timestamp);
+    add("Matched time",r.matched_minute);
+    add("Address",r.location);
+    add("Distance from office",r.distance_metres==null?null:r.distance_metres.toFixed(1)+" m");
+    add("AI score",r.sightengine_score==null?null:r.sightengine_score.toFixed(2));
+    if(r.metadata_flags&&r.metadata_flags.length)add("Metadata flags",r.metadata_flags.join("; "));
+    
+    c.append(dl);
+    res.append(c);
+  });
+  
+  const dt=el("details");
+  dt.append(el("summary",null,"Raw response"),el("pre",null,JSON.stringify(j,null,2)));
+  res.append(dt);
+}
+</script>
+</body>
+</html>
