@@ -1,25 +1,34 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-
-from app.logging_config import new_request_id, request_id_var, setup_logging
-from app.routers.punch_router import router as punch_router
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
+from app.logging_config import new_request_id, request_id_var, setup_logging
+from app.routers.punch_router import router as punch_router
+from app.services.punch_service import PunchService
+
 setup_logging()
 
-app = FastAPI(title="Punch verification API")
+# 1. Lifespan: Initialize heavy services ONCE on startup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.punch_service = PunchService()
+    yield
+    # Cleanup resources on shutdown
+    if hasattr(app.state.punch_service, "gemini") and app.state.punch_service.gemini:
+        app.state.punch_service.gemini.close()
 
-# --- ADD THIS BLOCK ---
+app = FastAPI(title="Punch verification API", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace "*" with your frontend's actual URL
+    allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"], # This allows the OPTIONS preflight request to succeed
+    allow_methods=["*"],
     allow_headers=["*"],
 )
-# ----------------------
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
@@ -32,7 +41,6 @@ async def add_request_id(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     return response
 
-# --- Templates setup ---
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -41,7 +49,7 @@ async def serve_ui(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="sample.html",
-        context={},  # add template variables here if needed
+        context={}, 
     )
-# -----------------------
+
 app.include_router(punch_router)
