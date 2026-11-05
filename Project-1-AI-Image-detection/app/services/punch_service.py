@@ -47,6 +47,9 @@ REJECTED = "rejected"
 VALID_ADJUSTMENT_TYPES = (0, 1, 2, 3)
 STATIC_ON_SITE = 1  # adjustment type that needs both check-in and check-out photos
 
+# NEW: Allowed time buffer in minutes
+TIME_TOLERANCE_MINUTES = 5
+
 SIGNATURES = [
     "adobe", "photoshop", "lightroom", "gimp", "affinity", "pixelmator",
     "corel", "paint.net", "capture one", "luminar", "photopea",
@@ -113,7 +116,7 @@ def _blank(status: str, error: str | None = None) -> dict:
         "time_match": None, "matched_minute": None, "file_name": None,
         "service_error": False, "service_name": None, "service_error_detail": None,
         "error": error,
-        "reason": None, # <--- NEW FIELD ADDED
+        "reason": None,
     }
 
 
@@ -490,7 +493,6 @@ class PunchService:
             real = [item for item in rejected if not item.get("service_error")]
             service = [item for item in rejected if item.get("service_error")]
 
-            # Service failures are always listed, whatever else was rejected.
             service_errors = [
                 {
                     "file_name": item.get("file_name"),
@@ -501,29 +503,20 @@ class PunchService:
                 for item in service
             ]
             if real:
-                # At least one photo was rejected for a real reason, so this is
-                # not a service error: `error` carries only the real reasons.
                 service_error = False
                 errors = [item["error"] for item in real if item.get("error")]
-                reasons = [item["reason"] for item in real if item.get("reason")]
             else:
-                # Every rejection was a service failure.
                 service_error = True
                 errors = [item["error"] for item in service if item.get("error")]
-                reasons = [item["reason"] for item in service if item.get("reason")]
                 
             return _request_result(
                 REJECTED, 
-                " ".join(errors) if errors else None, # Keep original error string
+                " ".join(errors) if errors else None,
                 results, 
                 service_error, 
-                service_errors,
-                # Note: You can add `reasons` to `_request_result` if you want it at the root level as well.
+                service_errors
             )
 
-        # All photos approved. Static on-site still needs both the check-in and
-        # check-out times to appear across the photos, but only when every
-        # photo was fully read and matched a time.
         seen = list(dict.fromkeys(ctx.expected_minutes))
         if (
             ctx.adjustment_type == STATIC_ON_SITE
@@ -587,13 +580,12 @@ class PunchService:
             else:
                 message = "The photo metadata shows it was edited: " + "; ".join(flags)
             result = _blank(REJECTED, message)
-            result["reason"] = _extract_reason(message) # <--- POPULATING REASON
+            result["reason"] = _extract_reason(message) 
             result["metadata_edited"] = True
             result["metadata_flags"] = flags
             result.update(c2pa_fields)
             return _Provenance(rejection=result)
 
-        # C2PA flags alone are notes, not a verdict: keep them and carry on.
         notes = ["; ".join(c2pa["flags"]) + "."] if c2pa["flags"] else []
         return _Provenance(c2pa_fields=c2pa_fields, c2pa_flags=list(c2pa["flags"]), notes=notes)
 
@@ -662,7 +654,20 @@ class PunchService:
             photo_date = photo_time.strftime("%Y-%m-%d")
             photo_minute = photo_time.strftime("%H:%M")
             date_ok = bool(ctx.attendance_date) and photo_date == ctx.attendance_date
-            time_ok = bool(ctx.expected_minutes) and photo_minute in ctx.expected_minutes
+            
+            # --- NEW LOGIC: Check time with +/- 5 minute tolerance ---
+            time_ok = False
+            if ctx.expected_minutes:
+                p_datetime = datetime.strptime(photo_minute, "%H:%M")
+                for expected in ctx.expected_minutes:
+                    e_datetime = datetime.strptime(expected, "%H:%M")
+                    # Calculate absolute difference in minutes
+                    diff_mins = abs((p_datetime - e_datetime).total_seconds()) / 60.0
+                    if diff_mins <= TIME_TOLERANCE_MINUTES:
+                        time_ok = True
+                        break
+            # ---------------------------------------------------------
+
             result["time_match"] = date_ok and time_ok
             if not date_ok:
                 reasons.append(
@@ -674,7 +679,7 @@ class PunchService:
                 )
             if not time_ok:
                 wanted = ", ".join(ctx.expected_minutes) if ctx.expected_minutes else "the requested time"
-                reasons.append("The photo time " + photo_minute + " does not match " + wanted + ".")
+                reasons.append("The photo time " + photo_minute + " does not match " + wanted + " (allowed difference: " + str(TIME_TOLERANCE_MINUTES) + " minutes).")
 
         if lat_num is not None and lon_num is not None:
             if ctx.office_latitude is None or ctx.office_longitude is None:
@@ -736,7 +741,7 @@ class PunchService:
         if f.reasons or edit_needs_review:
             f.result["status"] = APPROVED
             f.result["error"] = history
-            f.result["reason"] = _extract_reason(history) # <--- POPULATING REASON
+            f.result["reason"] = _extract_reason(history) 
             return f.result
 
         return None
@@ -770,7 +775,6 @@ class PunchService:
 
         if score is None:
             logger.error("[%s] sightengine failed: %s", ctx.request_id, failure)
-            # Everything gathered so far stays on the result; only the verdict changes.
             return _mark_service_failure(result, "sightengine", failure)
 
         threshold = ctx.thresholds.sightengine_ai
@@ -783,8 +787,6 @@ class PunchService:
         result["status"] = APPROVED
 
         if f.is_ai:
-            # Gemini says AI but Sightengine disagrees: only hard rules or
-            # Sightengine reject, so approve and note the conflict.
             result["error"] = (
                 " ".join(f.notes + f.gemini_flags)
                 + " Sightengine score "
@@ -793,17 +795,17 @@ class PunchService:
                 + format(threshold, ".2f")
                 + "."
             )
-            result["reason"] = _extract_reason(result["error"]) # <--- POPULATING REASON
+            result["reason"] = _extract_reason(result["error"])
             return result
 
         if f.edit_unknown:
             result["error"] = " ".join(f.notes + ["Gemini did not return an edit verdict."])
-            result["reason"] = _extract_reason(result["error"]) # <--- POPULATING REASON
+            result["reason"] = _extract_reason(result["error"])
             return result
 
         result["matched_minute"] = f.photo_minute if result.get("time_match") else None
         result["error"] = " ".join(f.notes) if f.notes else None
-        result["reason"] = _extract_reason(result["error"]) # <--- POPULATING REASON
+        result["reason"] = _extract_reason(result["error"])
         return result
 
     # Stage A (metadata) -----------------------------------------------------
