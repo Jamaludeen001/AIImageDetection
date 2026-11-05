@@ -111,16 +111,42 @@ def _blank(status: str, error: str | None = None) -> dict:
         "latitude": None, "longitude": None, "timestamp": None,
         "location": None, "accuracy": None, "distance_metres": None,
         "time_match": None, "matched_minute": None, "file_name": None,
-        "service_error": False,
+        "service_error": False, "service_name": None, "service_error_detail": None,
         "error": error,
     }
 
 
-def _service_failure() -> dict:
-    """Rejected photo caused by a service/internal failure, not by the photo."""
-    result = _blank(REJECTED, SERVICE_UNAVAILABLE)
+_SECRET_PATTERNS = (
+    (re.compile(r"AIza[0-9A-Za-z_\-]{20,}"), "[redacted]"),
+    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]+"), "Bearer [redacted]"),
+    (re.compile(r"(?i)\b(api[_-]?key|api[_-]?user|api[_-]?secret|key|token|secret|password)=[^&\s\"']+"),
+     r"\1=[redacted]"),
+)
+
+
+def _safe_detail(value: Any, limit: int = 300) -> str:
+    """Real failure reason for the response: one line, secrets removed, length capped."""
+    text = " ".join(str(value).split()) if value is not None else ""
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    if not text:
+        return "Unknown error."
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _mark_service_failure(result: dict, service: str, detail: Any) -> dict:
+    """Turn a photo result into a service-failure rejection, keeping what was gathered."""
+    result["status"] = REJECTED
+    result["error"] = SERVICE_UNAVAILABLE
     result["service_error"] = True
+    result["service_name"] = service
+    result["service_error_detail"] = _safe_detail(detail)
     return result
+
+
+def _service_failure(service: str, detail: Any) -> dict:
+    """Rejected photo caused by a service/internal failure, not by the photo."""
+    return _mark_service_failure(_blank(REJECTED), service, detail)
 
 
 def _request_result(
@@ -419,10 +445,10 @@ class PunchService:
 
         try:
             return self._verify_file(path, ctx)
-        except Exception:
+        except Exception as exc:
             # Safety net: an unexpected exception must never become an HTTP 500.
             logger.exception("[%s] unexpected error while verifying the image", ctx.request_id)
-            return _service_failure()
+            return _service_failure("internal", f"{type(exc).__name__}: {exc}")
         finally:
             try:
                 self.images.delete(path)
@@ -437,7 +463,12 @@ class PunchService:
 
             # Service failures are always listed, whatever else was rejected.
             service_errors = [
-                {"file_name": item.get("file_name"), "error": item.get("error")}
+                {
+                    "file_name": item.get("file_name"),
+                    "service": item.get("service_name"),
+                    "error": item.get("error"),
+                    "detail": item.get("service_error_detail"),
+                }
                 for item in service
             ]
             if real:
@@ -487,7 +518,7 @@ class PunchService:
         extracted = self._call_gemini(path)
         if extracted.get("error"):
             logger.error("[%s] gemini failed: %s", ctx.request_id, extracted["error"])
-            result = _service_failure()
+            result = _service_failure("gemini", extracted["error"])
             result["metadata_flags"] = list(provenance.c2pa_flags)
             result.update(provenance.c2pa_fields)
             return result
@@ -537,7 +568,7 @@ class PunchService:
             extracted = self.gemini.extract(path)
         except Exception as exc:
             logger.exception("Gemini call raised")
-            return {"error": str(exc)}
+            return {"error": f"{type(exc).__name__}: {exc}"}
         if not isinstance(extracted, dict):
             return {"error": "Gemini returned an unexpected response."}
         return extracted
@@ -680,7 +711,7 @@ class PunchService:
             sight = self.sightengine.detect(path)
         except Exception as exc:
             logger.exception("Sightengine call raised")
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         if not isinstance(sight, dict):
             return {"ok": False, "error": "Sightengine returned an unexpected response."}
         return sight
@@ -690,20 +721,19 @@ class PunchService:
         sight = self._call_sightengine(path)
 
         score = None
+        failure = None
         if sight.get("ok"):
             try:
                 score = float(sight["ai_score"])
             except (KeyError, TypeError, ValueError):
-                logger.error("[%s] sightengine returned no usable score", ctx.request_id)
+                failure = "Sightengine returned no usable ai_score."
         else:
-            logger.error("[%s] sightengine failed: %s", ctx.request_id, sight.get("error"))
+            failure = sight.get("error") or "Sightengine request failed."
 
         if score is None:
+            logger.error("[%s] sightengine failed: %s", ctx.request_id, failure)
             # Everything gathered so far stays on the result; only the verdict changes.
-            result["status"] = REJECTED
-            result["error"] = SERVICE_UNAVAILABLE
-            result["service_error"] = True
-            return result
+            return _mark_service_failure(result, "sightengine", failure)
 
         threshold = ctx.thresholds.sightengine_ai
         result["sightengine_score"] = score
