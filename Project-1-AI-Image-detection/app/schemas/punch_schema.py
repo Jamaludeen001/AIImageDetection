@@ -66,12 +66,16 @@ class PunchImageResult(BaseModel):
         False,
         description="True when this photo was rejected because a verification service failed, not because of the photo",
     )
+    service_name: Optional[str] = Field(None, description="Which part failed: gemini, sightengine or internal")
+    service_error_detail: Optional[str] = Field(None, description="Actual cause of the service failure, secrets removed")
     error: Optional[str] = None
 
 
 class PunchServiceErrorDetail(BaseModel):
     file_name: Optional[str] = None
-    error: Optional[str] = None
+    service: Optional[str] = Field(None, description="gemini, sightengine or internal")
+    error: Optional[str] = Field(None, description="Generic message shown to users")
+    detail: Optional[str] = Field(None, description="Actual cause of the failure, secrets removed, max 300 chars")
 
 
 class PunchVerifyResponse(BaseModel):
