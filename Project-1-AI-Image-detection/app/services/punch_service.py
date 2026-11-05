@@ -13,8 +13,13 @@ Only two statuses are ever returned, per photo and for the whole request:
 
 Failures of external services (Gemini / Sightengine) or unexpected internal
 errors are reported as rejections flagged with ``service_error`` so callers can
-tell "try again later" apart from "this photo is not acceptable". The real
-failure reason is written to the server log only, never to the response.
+tell "try again later" apart from "this photo is not acceptable".
+
+The real (sanitized) failure reason is returned per photo in
+``service_error_detail`` and per request in ``service_errors[].detail`` so that
+callers / support can diagnose the problem. The top-level ``error`` string and
+the per-photo ``error`` field still carry the generic user-facing message
+(``SERVICE_UNAVAILABLE``) so callers can show it to end users as-is.
 """
 from __future__ import annotations
 
@@ -66,7 +71,8 @@ HARD_REASON_PREFIXES = ("The photo date", "The photo time", "The photo is ")
 NO_OFFICE_REASON = "This branch has no office coordinates."
 
 # Shown to the caller when an external service fails or an unexpected internal
-# error happens. The real reason only goes to the server log.
+# error happens. This is the *generic* message; the real (sanitized) reason is
+# additionally surfaced via `service_error_detail` / `service_errors[].detail`.
 SERVICE_UNAVAILABLE = "Photo verification is temporarily unavailable. Please try again later."
 
 PHOTO_TIME_FORMATS = (
@@ -135,7 +141,12 @@ def _safe_detail(value: Any, limit: int = 300) -> str:
 
 
 def _mark_service_failure(result: dict, service: str, detail: Any) -> dict:
-    """Turn a photo result into a service-failure rejection, keeping what was gathered."""
+    """Turn a photo result into a service-failure rejection, keeping what was gathered.
+
+    The user-facing ``error`` stays generic, but the real (sanitized) failure
+    reason is stored in ``service_error_detail`` so it is returned in the
+    response (both per photo and aggregated into ``service_errors``).
+    """
     result["status"] = REJECTED
     result["error"] = SERVICE_UNAVAILABLE
     result["service_error"] = True
@@ -410,9 +421,10 @@ class PunchService:
             one["file_name"] = getattr(item, "file_name", None)
 
             logger.info(
-                "[%s] photo %s/%s status=%s service_error=%s error=%s",
+                "[%s] photo %s/%s status=%s service_error=%s error=%s detail=%s",
                 ctx.request_id, index + 1, len(images),
                 one.get("status"), one.get("service_error"), one.get("error"),
+                one.get("service_error_detail"),
             )
             if len(images) > 1 and one.get("error"):
                 label = one["file_name"] or ("Photo " + str(index + 1))
@@ -462,6 +474,7 @@ class PunchService:
             service = [item for item in rejected if item.get("service_error")]
 
             # Service failures are always listed, whatever else was rejected.
+            # The actual (sanitized) failure reason is carried in `detail`.
             service_errors = [
                 {
                     "file_name": item.get("file_name"),
@@ -733,6 +746,7 @@ class PunchService:
         if score is None:
             logger.error("[%s] sightengine failed: %s", ctx.request_id, failure)
             # Everything gathered so far stays on the result; only the verdict changes.
+            # The real failure reason is now stored in `service_error_detail`.
             return _mark_service_failure(result, "sightengine", failure)
 
         threshold = ctx.thresholds.sightengine_ai
