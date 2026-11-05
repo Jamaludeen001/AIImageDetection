@@ -47,7 +47,7 @@ REJECTED = "rejected"
 VALID_ADJUSTMENT_TYPES = (0, 1, 2, 3)
 STATIC_ON_SITE = 1  # adjustment type that needs both check-in and check-out photos
 
-# NEW: Allowed time buffer in minutes
+# Allowed time buffer in minutes
 TIME_TOLERANCE_MINUTES = 5
 
 SIGNATURES = [
@@ -641,6 +641,7 @@ class PunchService:
 
         reasons = []
         photo_minute = None
+        matched_expected_time = None # <--- NEW VARIABLE
         lat_num = _coordinate(latitude, 90)
         lon_num = _coordinate(longitude, 180)
         photo_time = _parse_photo_time(timestamp) if timestamp else None
@@ -665,6 +666,7 @@ class PunchService:
                     diff_mins = abs((p_datetime - e_datetime).total_seconds()) / 60.0
                     if diff_mins <= TIME_TOLERANCE_MINUTES:
                         time_ok = True
+                        matched_expected_time = expected # <--- SAVE THE MATCHED EXPECTED TIME
                         break
             # ---------------------------------------------------------
 
@@ -704,6 +706,10 @@ class PunchService:
             item for item in reasons
             if item not in hard_reasons and item != NO_OFFICE_REASON
         ]
+        
+        # OVERWRITE result["matched_minute"] WITH THE EXPECTED TIME
+        result["matched_minute"] = matched_expected_time
+        
         return _Findings(
             result=result,
             notes=provenance.notes,
@@ -803,7 +809,7 @@ class PunchService:
             result["reason"] = _extract_reason(result["error"])
             return result
 
-        result["matched_minute"] = f.photo_minute if result.get("time_match") else None
+        # Note: We no longer set matched_minute here because it was already set during _assess!
         result["error"] = " ".join(f.notes) if f.notes else None
         result["reason"] = _extract_reason(result["error"])
         return result
@@ -830,24 +836,4 @@ class PunchService:
                             continue
                         value = bytes(value).decode("utf-8", errors="ignore")
                     if isinstance(value, str) and _signature_in(value):
-                        flags.append(f"Metadata hit in image info chunk [{key}]")
-
-            exif_data = pil_img.getexif() if hasattr(pil_img, "getexif") else None
-            if exif_data:
-                for tag_id, value in exif_data.items():
-                    tag_name = TAGS.get(tag_id, tag_id)
-                    if tag_name in EXIF_TEXT_TAGS and _signature_in(value):
-                        flags.append(f"EXIF tag hit [{tag_name}]")
-
-            xmp_data = pil_img.getxmp() if hasattr(pil_img, "getxmp") else None
-            if xmp_data:
-                found = _signature_in(" \n ".join(_xmp_strings(xmp_data)))
-                if found:
-                    flags.append(f"XMP signature match: {found}")
-        except Exception as exc:
-            logger.error("Metadata parse failed: %s", exc)
-            return {"error": "Image metadata could not be read."}
-        finally:
-            pil_img.close()
-
-        return {"is_edited": bool(flags), "flags": flags}
+                        flags
