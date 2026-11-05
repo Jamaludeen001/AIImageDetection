@@ -1,41 +1,50 @@
-from typing import Optional, List
+from typing import List, Literal, Optional
+
 from pydantic import BaseModel, Field
+
+Status = Literal["approved", "rejected"]
+
 
 class PunchImageInput(BaseModel):
     image_base64: str = Field(..., description="JPG or PNG bytes, raw base64 or a data URL")
     file_name: Optional[str] = None
 
-class PunchPdfInput(BaseModel):  
+
+class PunchPdfInput(BaseModel):
     pdf_base64: str = Field(..., description="PDF bytes, raw base64")
     file_name: Optional[str] = None
+
 
 class PunchImageLink(BaseModel):
     image_url: str = Field(..., description="Full http or https URL of a JPG or PNG")
     file_name: Optional[str] = None
 
+
 class PunchVerifyRequest(BaseModel):
     image_base64: Optional[str] = Field(None, description="One image, used when images is empty")
-    images: List[PunchImageInput] = []
-    pdfs: List[PunchPdfInput] = []
+    images: List[PunchImageInput] = Field(default_factory=list)
+    pdfs: List[PunchPdfInput] = Field(default_factory=list)
     adjustment_type: int = Field(..., description="0 regular, 1 static, 2 semi punch, 3 check-in correction")
-    attendance_date: Optional[str] = None
-    expected_times: List[str] = []
+    attendance_date: Optional[str] = Field(None, description="YYYY-MM-DD")
+    expected_times: List[str] = Field(default_factory=list, description="HH:MM or HH:MM:SS")
     office_latitude: Optional[float] = None
     office_longitude: Optional[float] = None
+
 
 class PunchVerifyUrlRequest(BaseModel):
     images: List[PunchImageLink]
     adjustment_type: int = Field(..., description="0 regular, 1 static, 2 semi punch, 3 check-in correction")
-    attendance_date: Optional[str] = None
-    expected_times: List[str] = []
+    attendance_date: Optional[str] = Field(None, description="YYYY-MM-DD")
+    expected_times: List[str] = Field(default_factory=list, description="HH:MM or HH:MM:SS")
     office_latitude: Optional[float] = None
     office_longitude: Optional[float] = None
 
+
 class PunchImageResult(BaseModel):
     file_name: Optional[str] = None
-    status: str
+    status: Status
     metadata_edited: bool = False
-    metadata_flags: List[str] = []
+    metadata_flags: List[str] = Field(default_factory=list)
     c2pa_present: Optional[bool] = None
     c2pa_state: Optional[str] = None
     c2pa_issuer: Optional[str] = None
@@ -53,9 +62,28 @@ class PunchImageResult(BaseModel):
     distance_metres: Optional[float] = None
     time_match: Optional[bool] = None
     matched_minute: Optional[str] = None
+    service_error: bool = Field(
+        False,
+        description="True when this photo was rejected because a verification service failed, not because of the photo",
+    )
     error: Optional[str] = None
 
-class PunchVerifyResponse(BaseModel):
-    status: str
+
+class PunchServiceErrorDetail(BaseModel):
+    file_name: Optional[str] = None
     error: Optional[str] = None
-    results: List[PunchImageResult] = []
+
+
+class PunchVerifyResponse(BaseModel):
+    status: Status
+    error: Optional[str] = None
+    service_error: bool = Field(
+        False,
+        description="True only when every rejection was a service failure. "
+        "False if any photo was rejected for a real reason.",
+    )
+    service_errors: List[PunchServiceErrorDetail] = Field(
+        default_factory=list,
+        description="Photos that failed because of a service problem, always listed here",
+    )
+    results: List[PunchImageResult] = Field(default_factory=list)
