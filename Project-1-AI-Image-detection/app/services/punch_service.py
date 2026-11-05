@@ -836,4 +836,24 @@ class PunchService:
                             continue
                         value = bytes(value).decode("utf-8", errors="ignore")
                     if isinstance(value, str) and _signature_in(value):
-                        flags
+                        flags.append(f"Metadata hit in image info chunk [{key}]")
+
+            exif_data = pil_img.getexif() if hasattr(pil_img, "getexif") else None
+            if exif_data:
+                for tag_id, value in exif_data.items():
+                    tag_name = TAGS.get(tag_id, tag_id)
+                    if tag_name in EXIF_TEXT_TAGS and _signature_in(value):
+                        flags.append(f"EXIF tag hit [{tag_name}]")
+
+            xmp_data = pil_img.getxmp() if hasattr(pil_img, "getxmp") else None
+            if xmp_data:
+                found = _signature_in(" \n ".join(_xmp_strings(xmp_data)))
+                if found:
+                    flags.append(f"XMP signature match: {found}")
+        except Exception as exc:
+            logger.error("Metadata parse failed: %s", exc)
+            return {"error": "Image metadata could not be read."}
+        finally:
+            pil_img.close()
+
+        return {"is_edited": bool(flags), "flags": flags}
