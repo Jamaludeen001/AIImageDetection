@@ -43,6 +43,10 @@ class PunchVerifyUrlRequest(BaseModel):
 class PunchImageResult(BaseModel):
     file_name: Optional[str] = None
     status: Status
+    reason: Optional[str] = Field(
+        None, 
+        description="A concise summary of why the photo was rejected (e.g. 'Marked as AI generated, Date mismatch')"
+    ) # <--- NEW FIELD ADDED HERE
     metadata_edited: bool = False
     metadata_flags: List[str] = Field(default_factory=list)
     c2pa_present: Optional[bool] = None
