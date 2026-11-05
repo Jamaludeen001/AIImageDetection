@@ -113,6 +113,7 @@ def _blank(status: str, error: str | None = None) -> dict:
         "time_match": None, "matched_minute": None, "file_name": None,
         "service_error": False, "service_name": None, "service_error_detail": None,
         "error": error,
+        "reason": None, # <--- NEW FIELD ADDED
     }
 
 
@@ -134,10 +135,37 @@ def _safe_detail(value: Any, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
+def _extract_reason(message: str | None) -> str | None:
+    """Parse the verbose error message into a clean, concise reason list."""
+    if not message:
+        return None
+    
+    reasons = []
+    msg = message.lower()
+    
+    if "ai-generated" in msg or "ai generated" in msg:
+        reasons.append("Marked as AI generated")
+    if "edited" in msg:
+        reasons.append("Marked as edited")
+    if "date" in msg and ("does not match" in msg or "mismatch" in msg):
+        reasons.append("Date mismatch")
+    if "time" in msg and ("does not match" in msg or "mismatch" in msg):
+        reasons.append("Time mismatch")
+    if "distance" in msg or "metres from the office" in msg:
+        reasons.append("Outside allowed office radius")
+    if "gps" in msg or "readable gps" in msg:
+        reasons.append("Missing GPS")
+    if "clock" in msg:
+        reasons.append("Missing time")
+        
+    return ", ".join(reasons) if reasons else message
+
+
 def _mark_service_failure(result: dict, service: str, detail: Any) -> dict:
     """Turn a photo result into a service-failure rejection, keeping what was gathered."""
     result["status"] = REJECTED
     result["error"] = SERVICE_UNAVAILABLE
+    result["reason"] = "Verification service failure"
     result["service_error"] = True
     result["service_name"] = service
     result["service_error_detail"] = _safe_detail(detail)
@@ -257,6 +285,7 @@ def _haversine_metres(lat1: float, lon1: float, lat2: float, lon2: float) -> flo
 def _reject(result: dict, message: str | None) -> dict:
     result["status"] = REJECTED
     result["error"] = message
+    result["reason"] = _extract_reason(message)
     return result
 
 
@@ -476,13 +505,20 @@ class PunchService:
                 # not a service error: `error` carries only the real reasons.
                 service_error = False
                 errors = [item["error"] for item in real if item.get("error")]
+                reasons = [item["reason"] for item in real if item.get("reason")]
             else:
                 # Every rejection was a service failure.
                 service_error = True
                 errors = [item["error"] for item in service if item.get("error")]
+                reasons = [item["reason"] for item in service if item.get("reason")]
+                
             return _request_result(
-                REJECTED, " ".join(errors) if errors else None,
-                results, service_error, service_errors,
+                REJECTED, 
+                " ".join(errors) if errors else None, # Keep original error string
+                results, 
+                service_error, 
+                service_errors,
+                # Note: You can add `reasons` to `_request_result` if you want it at the root level as well.
             )
 
         # All photos approved. Static on-site still needs both the check-in and
@@ -551,6 +587,7 @@ class PunchService:
             else:
                 message = "The photo metadata shows it was edited: " + "; ".join(flags)
             result = _blank(REJECTED, message)
+            result["reason"] = _extract_reason(message) # <--- POPULATING REASON
             result["metadata_edited"] = True
             result["metadata_flags"] = flags
             result.update(c2pa_fields)
@@ -699,6 +736,7 @@ class PunchService:
         if f.reasons or edit_needs_review:
             f.result["status"] = APPROVED
             f.result["error"] = history
+            f.result["reason"] = _extract_reason(history) # <--- POPULATING REASON
             return f.result
 
         return None
@@ -755,14 +793,17 @@ class PunchService:
                 + format(threshold, ".2f")
                 + "."
             )
+            result["reason"] = _extract_reason(result["error"]) # <--- POPULATING REASON
             return result
 
         if f.edit_unknown:
             result["error"] = " ".join(f.notes + ["Gemini did not return an edit verdict."])
+            result["reason"] = _extract_reason(result["error"]) # <--- POPULATING REASON
             return result
 
         result["matched_minute"] = f.photo_minute if result.get("time_match") else None
         result["error"] = " ".join(f.notes) if f.notes else None
+        result["reason"] = _extract_reason(result["error"]) # <--- POPULATING REASON
         return result
 
     # Stage A (metadata) -----------------------------------------------------
