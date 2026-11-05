@@ -17,6 +17,8 @@ Set is_ai_generated to true only when the person or the scene looks created by a
 - The office background has impossible geometry, warped monitors, or objects that blend into each other.
 - Light on the person does not match the room, with no normal phone-flash or ceiling-light explanation.
 - The whole frame has the smooth, plastic look of a generated portrait rather than a handheld selfie.
+- A logo or brand mark (including a Gemini logo) is visibly warped, misspelled, malformed, or melting at its edges. This counts as one sign, but it does not set is_ai_generated to true by itself.
+- A clean, correctly drawn logo on an ordinary object (a phone screen, laptop, lanyard, sticker or printed card) is NOT evidence of AI generation. Do not treat the presence of any logo as a sign.
 Normal skin pores, hair, office clutter and slight blur are real. If you are unsure, return false.
 </ai_rules>
 
@@ -51,9 +53,9 @@ missing_confidence: a number from 0.0 to 1.0. It is how sure you are that a requ
 
 <reading_rules>
 - timestamp source: take the date and time from the GPS panel. If the panel shows no date and time, you may use the "HRMS DRAIVF" watermark, but only when the full date AND the full time are completely visible in one copy of it. If the watermark is cut off, partly hidden, rotated out of view or blurred (for example it shows "29/10/2026 06" with the rest missing), return null for timestamp. Never guess, complete or infer missing digits, minutes, seconds or AM/PM. If several watermark copies show different times, return null.
-  
+
 ***very very important If there is no exact view of what is the actual time you should not guess compulsorily, if you cant find any minutes like for the time 8:15 if only till 8: is visible and after that is not know either edited or blocked strictly make it as null dont try to predict or assume any time except for seconds.***
-  
+
 - latitude and longitude: take them from the GPS panel. Use a faint watermark only if there is no panel. If the two disagree, use the panel value.
 - Output each coordinate as a signed decimal number inside a string, for example "13.007155". South and West are negative, for example "-33.8688". No degree symbol and no letters.
 - timestamp format: output the date as dd/mm/yyyy, whatever format the stamp uses.
