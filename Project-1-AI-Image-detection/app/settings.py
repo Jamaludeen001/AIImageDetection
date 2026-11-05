@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     # Comma separated list tried, in order, after GEMINI_MODEL fails.
-    GEMINI_FALLBACK_MODELS: str = "gemini-2.5-flash-lite"
+    GEMINI_FALLBACK_MODELS: str = "gemini-3.1-flash-lite"
     # Longest side, in pixels, of the copy sent to Gemini. Small photos are never enlarged.
     GEMINI_MAX_IMAGE_SIZE: int = 1280
     GEMINI_JPEG_QUALITY: int = 90
