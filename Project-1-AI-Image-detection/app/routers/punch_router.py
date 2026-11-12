@@ -223,3 +223,52 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(process_whatsapp_payload, payload)
     return {"status": "received"}
+
+from fastapi.responses import HTMLResponse
+
+PRIVACY_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy - mai.ai</title>
+  <style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 16px;line-height:1.6}</style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p>Last updated: November 12, 2026</p>
+
+  <p>mai.ai ("we", "us") operates a WhatsApp-based punch verification service. This policy explains what we collect and how we use it.</p>
+
+  <h2>Information we collect</h2>
+  <ul>
+    <li>Your WhatsApp phone number and profile name.</li>
+    <li>Photos you send for punch verification, including any GPS and timestamp metadata.</li>
+    <li>Location data you choose to share in the chat.</li>
+    <li>Messages you send to the service.</li>
+  </ul>
+
+  <h2>How we use it</h2>
+  <ul>
+    <li>To verify attendance punches (photo authenticity and location).</li>
+    <li>To reply to your messages and report verification results.</li>
+    <li>To maintain security and prevent fraud.</li>
+  </ul>
+
+  <h2>Sharing</h2>
+  <p>We do not sell your data. Images may be processed by third-party analysis providers solely to perform verification. Messages are delivered through Meta's WhatsApp Business Platform, which has its own privacy policy.</p>
+
+  <h2>Retention and deletion</h2>
+  <p>We keep data only as long as needed for verification and record-keeping. To request deletion, contact us at the email below.</p>
+
+  <h2>Contact</h2>
+  <p>mai.ai &mdash; <a href="mailto:YOUR_EMAIL@example.com">YOUR_EMAIL@example.com</a></p>
+</body>
+</html>
+"""
+
+
+@router.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+    return PRIVACY_HTML
