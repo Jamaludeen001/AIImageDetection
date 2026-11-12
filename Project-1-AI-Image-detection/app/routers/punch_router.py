@@ -263,7 +263,7 @@ PRIVACY_HTML = """
   <p>We keep data only as long as needed for verification and record-keeping. To request deletion, contact us at the email below.</p>
 
   <h2>Contact</h2>
-  <p>mai.ai &mdash; <a href="mailto:YOUR_EMAIL@example.com">YOUR_EMAIL@example.com</a></p>
+  <p>mai.ai &mdash; <a href="mailto:YOUR_EMAIL@example.com">jjamaludeen27@gmail.com</a></p>
 </body>
 </html>
 """
