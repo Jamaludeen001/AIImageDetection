@@ -272,3 +272,66 @@ PRIVACY_HTML = """
 @router.get("/privacy", response_class=HTMLResponse)
 def privacy_policy():
     return PRIVACY_HTML
+
+# ---------------- Twilio sandbox (testing) ----------------
+from fastapi import Form
+from fastapi.responses import Response
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
+
+_twilio_last_location: dict[str, dict] = {}
+
+
+def twilio_send(to: str, body: str) -> None:
+    """to is like 'whatsapp:+918939708851'."""
+    try:
+        r = httpx.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+            auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+            data={"From": TWILIO_WHATSAPP_NUMBER, "To": to, "Body": body},
+            timeout=20,
+        )
+        if r.status_code >= 400:
+            logger.error("Twilio send failed %s: %s", r.status_code, r.text)
+    except Exception:
+        logger.exception("Twilio send crashed")
+
+
+def twilio_handle(form: dict) -> None:
+    sender = form.get("From", "")          # 'whatsapp:+91...'
+    body = form.get("Body", "")
+    num_media = int(form.get("NumMedia", "0") or 0)
+    lat, lng = form.get("Latitude"), form.get("Longitude")
+
+    if lat and lng:
+        _twilio_last_location[sender] = {"lat": lat, "lng": lng}
+        twilio_send(sender, "Location saved. Now send your punch photo.")
+    elif num_media > 0:
+        media_url = form.get("MediaUrl0")
+        mime = form.get("MediaContentType0", "image/jpeg")
+        try:
+            # Twilio media URLs need basic auth
+            f = httpx.get(media_url, auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+                          follow_redirects=True, timeout=60)
+            f.raise_for_status()
+            result = run_punch_verification(f.content, mime, _twilio_last_location.get(sender))
+            twilio_send(sender, result)
+        except Exception:
+            logger.exception("Twilio image processing failed")
+            twilio_send(sender, "Sorry, I couldn't process that image.")
+    else:
+        logger.info("Twilio text from %s: %s", sender, body)
+        twilio_send(sender, "Please send a location and then a photo for punch verification.")
+
+
+@router.post("/twilio/webhook")
+async def twilio_webhook(
+    background_tasks: BackgroundTasks,
+    request: Request,
+):
+    form = dict((await request.form()).items())
+    logger.info("TWILIO PAYLOAD: %s", form)
+    background_tasks.add_task(twilio_handle, form)
+    return Response(content="<Response></Response>", media_type="application/xml")
